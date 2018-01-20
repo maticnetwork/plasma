@@ -9,7 +9,7 @@ import Transaction from '../src/chain/transaction'
 let RootChain = artifacts.require('./RootChain.sol')
 
 const BN = utils.BN
-const keyPair = require('./keyPair')
+const keyPair = require('./keypair')
 
 contract('Root chain', function(accounts) {
   describe('deposit', async function() {
