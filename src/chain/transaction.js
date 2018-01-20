@@ -79,13 +79,18 @@ export default class Transaction {
     return utils.rlphash(items)
   }
 
+  merkleHash() {
+    return utils.sha3(Buffer.concat([this.hash(false), this.sig1, this.sig2]))
+  }
+
   /**
    * sign a transaction with a given a private key
    * @param {Buffer} privateKey
    */
   sign1(privateKey) {
-    this.sign1 = utils.ecsign(this.hash(false), privateKey)
-    return this.sign1
+    const vrs = utils.ecsign(this.hash(false), privateKey)
+    this.sig1 = utils.toBuffer(utils.toRpcSig(vrs.v, vrs.r, vrs.s))
+    return this.sig1
   }
 
   /**
@@ -93,8 +98,17 @@ export default class Transaction {
    * @param {Buffer} privateKey
    */
   sign2(privateKey) {
-    this.sign2 = utils.ecsign(this.hash(false), privateKey)
-    return this.sign2
+    const vrs = utils.ecsign(this.hash(false), privateKey)
+    this.sig2 = utils.toBuffer(utils.toRpcSig(vrs.v, vrs.r, vrs.s))
+    return this.sig2
+  }
+
+  confirmSig(root, privateKey) {
+    const vrs = utils.ecsign(
+      utils.sha3(Buffer.concat([this.hash(false), this.sig1, this.sig2, root])),
+      privateKey
+    )
+    return utils.toBuffer(utils.toRpcSig(vrs.v, vrs.r, vrs.s))
   }
 
   serializeTx(includeSignature = false) {
