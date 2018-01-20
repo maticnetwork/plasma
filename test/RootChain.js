@@ -96,6 +96,12 @@ contract('Root chain', function(accounts) {
           from: owner
         }
       )
+
+      const priority = 1 * 1000000000 + 10000 * 0 + 0
+      const [user, amount, pos] = await rootChain.getExit(priority)
+      assert.equal(user, owner)
+      assert.equal(amount.toString(), value)
+      assert.deepEqual([1, 0, 0], pos.map(p => p.toNumber()))
     })
   })
 })
