@@ -1,7 +1,7 @@
 import utils from 'ethereumjs-util'
 import {Buffer} from 'safe-buffer'
 
-const BN = utils.BN
+// const BN = utils.BN
 const rlp = utils.rlp
 const getFields = () => [
   {
