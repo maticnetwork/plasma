@@ -1,3 +1,5 @@
+/* global assert */
+
 import utils from 'ethereumjs-util'
 
 import assertRevert from './helpers/assertRevert'

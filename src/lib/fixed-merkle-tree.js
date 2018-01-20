@@ -19,7 +19,6 @@ export default class FixedMerkleTree {
       return false
     }
 
-    const layerIndex = this.layers.length
     const treeLevel = []
     for (let i = 0; i < nodes.length; i += 2) {
       const left = nodes[i]
@@ -55,7 +54,7 @@ export default class FixedMerkleTree {
     if (index <= this.getLeaves().length) {
       let siblingIndex
       for (let i = 0; i < this.layers.length - 1; i++) {
-        if (index % 2 == 0) {
+        if (index % 2 === 0) {
           siblingIndex = index + 1
         } else {
           siblingIndex = index - 1
