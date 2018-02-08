@@ -162,19 +162,20 @@ export default class Transaction {
     for (i = 0; i < this.totalInputs; i++) {
       const inputTx = await this.getInputTransaction(chain, i)
       if (inputTx) {
-        const outputIndex = utils.bufferToInt(this.raw[3 * i + 2]) // this.raw[2] & this.raw[5] ==> can be 0 or 1
+        const outputIndex = utils.bufferToInt(
+          this.outputPositionByInputIndex(i)
+        )
 
         // calculate input sum
         inputSum = inputSum.add(
-          // inputTx.raw[7] & inputTx.raw[9] ==> input amount
-          new BN(inputTx.raw[7 + outputIndex * 2])
+          new BN(inputTx.amountByOutputIndex(outputIndex))
         )
 
         // check signature
-        const recovered = this._getSender(i)
+        const recovered = this.senderByInputIndex(i)
         if (
           !recovered ||
-          recovered.compare(inputTx.raw[6 + outputIndex * 2]) !== 0 // inputTx.raw[6] & inputTx.raw[8]
+          recovered.compare(inputTx.ownerByOutputIndex(outputIndex)) !== 0
         ) {
           return false
         }
@@ -183,7 +184,7 @@ export default class Transaction {
 
     for (i = 0; i < this.totalOutputs; i++) {
       // calculate output sum
-      outputSum = outputSum.add(new BN(this.raw[2 * i + 7]))
+      outputSum = outputSum.add(new BN(this.amountByOutputIndex(i)))
     }
 
     // invalid if sum(inputs) < fees + sum(outputs)
@@ -199,8 +200,7 @@ export default class Transaction {
       return null
     }
 
-    const from = inputIndex * 3
-    let [blockNumber, txIndex] = this.raw.slice(from, from + 3)
+    let [blockNumber, txIndex] = this.positionsByInputIndex(inputIndex)
     try {
       txIndex = utils.bufferToInt(txIndex) // parse to int
       const block = await chain.getBlock(new BN(blockNumber).toNumber())
@@ -211,46 +211,84 @@ export default class Transaction {
     return null
   }
 
-  getSender1() {
-    return this._getSender(0)
-  }
-
-  getSender2() {
-    return this._getSender(1)
-  }
-
-  _getSender(i) {
-    if (this._inputNull(i)) {
-      return null
-    }
-
-    const vrs = utils.fromRpcSig(this.raw[11 + i]) // parse {v,r,s} from sig
-    return utils.pubToAddress(
-      utils.ecrecover(this.hash(false), vrs.v, vrs.r, vrs.s)
-    )
-  }
-
   //
   // utils methods
   //
 
   _inputKey(inputIndex) {
-    return this.raw
-      .slice(inputIndex * 3, 3)
-      .map(v => utils.bufferToInt(v).toString())
-      .join('-')
+    const pos = this.positionsByInputIndex(inputIndex)
+    return pos.map(v => utils.bufferToInt(v).toString()).join('-')
   }
 
   _inputNull(inputIndex) {
-    const from = inputIndex * 3
-    return this.raw.slice(from, from + 3).every(v => utils.bufferToInt(v) === 0)
+    const pos = this.positionsByInputIndex(inputIndex)
+    return pos.every(v => utils.bufferToInt(v) === 0)
   }
 
   _outputNull(outputIndex) {
-    const from = 6 + outputIndex * 2
-    return (
-      utils.bufferToHex(this.raw[from]) === BlankAddress &&
-      new BN(this.raw[from + 1]).isZero()
+    const owner = this.ownerByOutputIndex(outputIndex)
+    const amount = this.amountByOutputIndex(outputIndex)
+    return utils.bufferToHex(owner) === BlankAddress && new BN(amount).isZero()
+  }
+
+  /**
+   * Get position array (as Buffer array) for given input index.
+   * @param index Index must be less than or equals to `totalInputs`
+   * @returns buffer array - this.raw[0, 1, 2] & this.raw[3, 4, 5], for input index 0 & 1 respectively.
+   */
+  positionsByInputIndex(index) {
+    return this.raw.slice(3 * index, 3 * index + 3)
+  }
+
+  /**
+   * Get input's output position (as Buffer) for given input index.
+   * @param index Index must be less than or equals to `totalInputs`
+   * @returns buffer - this.raw[2] & this.raw[5], for input index 0 & 1 respectively.
+   */
+  outputPositionByInputIndex(index) {
+    return this.raw[3 * index + 2]
+  }
+
+  /**
+   * Get sender's signature (as Buffer) by input index.
+   * @param index Index must be less than or equals to `totalInputs`
+   * @returns buffer - this.raw[11] & this.raw[13], for input index 0 & 1 respectively.
+   */
+  sigByInputIndex(index) {
+    return this.raw[11 + index]
+  }
+
+  /**
+   * Get sender's address (as Buffer) by input index.
+   * @param index Index must be less than or equals to `totalInputs`
+   * @returns buffer - address which will be recovered from input signature.
+   */
+  senderByInputIndex(index) {
+    if (this._inputNull(index)) {
+      return null
+    }
+
+    const vrs = utils.fromRpcSig(this.sigByInputIndex(index)) // parse {v,r,s} from sig
+    return utils.pubToAddress(
+      utils.ecrecover(this.hash(false), vrs.v, vrs.r, vrs.s)
     )
+  }
+
+  /**
+   * Get new owner address (as Buffer) by output index.
+   * @param index Index must be less than or equals to `totalOutputs`
+   * @returns buffer - this.raw[6] & this.raw[8], for input index 0 & 1 respectively.
+   */
+  ownerByOutputIndex(index) {
+    return this.raw[2 * index + 6]
+  }
+
+  /**
+   * Get new owner's amount (as Buffer) by output index.
+   * @param index Index must be less than or equals to `totalOutputs`
+   * @returns buffer - this.raw[7] & this.raw[9], for input index 0 & 1 respectively.
+   */
+  amountByOutputIndex(index) {
+    return this.raw[2 * index + 7]
   }
 }

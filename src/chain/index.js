@@ -163,14 +163,15 @@ class Chain {
 
     // check if any tx input is already spent
     for (let i = 0; i < tx.totalInputs; i++) {
-      const sender = tx._getSender(i)
+      const sender = tx.senderByInputIndex(i)
       if (sender) {
+        const [blkNumber, txIndex, oIndex] = tx.positionsByInputIndex(i)
         const keyForUTXO = Buffer.concat([
           config.prefixes.utxo,
           utils.toBuffer(sender),
-          new BN(tx.raw[i * 3 + 0]).toArrayLike(Buffer, 'be', 32), // block number
-          new BN(tx.raw[i * 3 + 1]).toArrayLike(Buffer, 'be', 32), // tx index
-          new BN(tx.raw[i * 3 + 2]).toArrayLike(Buffer, 'be', 32) // output index
+          new BN(blkNumber).toArrayLike(Buffer, 'be', 32), // block number
+          new BN(txIndex).toArrayLike(Buffer, 'be', 32), // tx index
+          new BN(oIndex).toArrayLike(Buffer, 'be', 32) // output index
         ])
 
         let valueForUTXO = null
@@ -349,18 +350,19 @@ class Chain {
         })
 
         for (let i = 0; i < tx.totalInputs; i++) {
-          const sender = tx._getSender(i)
+          const sender = tx.senderByInputIndex(i)
           // sender
           if (sender) {
+            const [blkNumber, txIndex, oIndex] = tx.positionsByInputIndex(i)
             dbOps.push({
               db: 'details',
               type: 'del',
               key: Buffer.concat([
                 config.prefixes.utxo,
                 utils.toBuffer(sender), // address
-                new BN(tx.raw[i * 3 + 0]).toArrayLike(Buffer, 'be', 32), // block number
-                new BN(tx.raw[i * 3 + 1]).toArrayLike(Buffer, 'be', 32), // tx index
-                new BN(tx.raw[i * 3 + 2]).toArrayLike(Buffer, 'be', 32) // output index
+                new BN(blkNumber).toArrayLike(Buffer, 'be', 32), // block number
+                new BN(txIndex).toArrayLike(Buffer, 'be', 32), // tx index
+                new BN(oIndex).toArrayLike(Buffer, 'be', 32) // output index
               ]),
               keyEncoding: 'binary',
               valueEncoding: 'binary'
@@ -374,7 +376,7 @@ class Chain {
             type: 'put',
             key: Buffer.concat([
               config.prefixes.utxo,
-              tx.raw[i * 2 + 6], // address
+              tx.ownerByOutputIndex(i), // new owner address
               new BN(block.header.number).toArrayLike(Buffer, 'be', 32), // block number
               new BN(txIndex).toArrayLike(Buffer, 'be', 32), // current tx index
               new BN(i).toArrayLike(Buffer, 'be', 32) // output index

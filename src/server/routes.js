@@ -23,53 +23,39 @@ const routes = Router()
 
 const methods = {
   async getBlockByNumber([blockNumber]) {
-    let block = {}
-    try {
-      const obj = await chain.getBlock(blockNumber)
-      if (obj) {
-        block = obj.toJSON(true)
-      }
-    } catch (e) {}
-    return block
-  },
-
-  async getBlockByHash([blockHash]) {
-    let block = {}
-    try {
-      const obj = await chain.getBlock(utils.toBuffer(blockHash))
-      if (obj) {
-        block = obj.toJSON(true)
-      }
-    } catch (e) {}
-    return block
-  },
-
-  async sendTx([txBytes]) {
-    try {
-      const hash = await chain.addTx(txBytes)
-      return utils.bufferToHex(hash)
-    } catch (e) {}
+    const obj = await chain.getBlock(blockNumber)
+    if (obj) {
+      return obj.toJSON(true)
+    }
 
     return null
   },
 
-  async getTxByHash([txHash]) {
-    let tx = {}
-    try {
-      const obj = await getTxByHash(txHash)
-      if (obj) {
-        tx = obj.toJSON(true)
-      }
-    } catch (e) {}
+  async getBlockByHash([blockHash]) {
+    const obj = await chain.getBlock(utils.toBuffer(blockHash))
+    if (obj) {
+      return obj.toJSON(true)
+    }
 
-    return tx
+    return null
+  },
+
+  async sendTx([txBytes]) {
+    const hash = await chain.addTx(txBytes)
+    return utils.bufferToHex(hash)
+  },
+
+  async getTxByHash([txHash]) {
+    const obj = await getTxByHash(txHash)
+    if (obj) {
+      return obj.toJSON(true)
+    }
+
+    return null
   },
 
   async getUTXOs([address]) {
-    try {
-      return await getAllUTXOs(address)
-    } catch (e) {}
-    return []
+    return await getAllUTXOs(address)
   }
 }
 
