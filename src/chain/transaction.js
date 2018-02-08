@@ -162,17 +162,20 @@ export default class Transaction {
     for (i = 0; i < this.totalInputs; i++) {
       const inputTx = await this.getInputTransaction(chain, i)
       if (inputTx) {
+        const outputIndex = utils.bufferToInt(this.raw[3 * i + 2]) // this.raw[2] & this.raw[5] ==> can be 0 or 1
+
         // calculate input sum
         inputSum = inputSum.add(
-          new BN(inputTx.raw[7 + utils.bufferToInt(this.raw[3 * i + 2]) * 2])
+          // inputTx.raw[7] & inputTx.raw[9] ==> input amount
+          new BN(inputTx.raw[7 + outputIndex * 2])
         )
 
         // check signature
-        const vrs = utils.fromRpcSig(this.raw[11 + i]) // parse {v,r,s} from sig
-        const recovered = utils.pubToAddress(
-          utils.ecrecover(this.hash(false), vrs.v, vrs.r, vrs.s)
-        )
-        if (recovered.compare(this.raw[2 * i + 6]) !== 0) {
+        const recovered = this._getSender(i)
+        if (
+          !recovered ||
+          recovered.compare(inputTx.raw[6 + outputIndex * 2]) !== 0 // inputTx.raw[6] & inputTx.raw[8]
+        ) {
           return false
         }
       }
@@ -206,6 +209,25 @@ export default class Transaction {
       }
     } catch (e) {}
     return null
+  }
+
+  getSender1() {
+    return this._getSender(0)
+  }
+
+  getSender2() {
+    return this._getSender(1)
+  }
+
+  _getSender(i) {
+    if (this._inputNull(i)) {
+      return null
+    }
+
+    const vrs = utils.fromRpcSig(this.raw[11 + i]) // parse {v,r,s} from sig
+    return utils.pubToAddress(
+      utils.ecrecover(this.hash(false), vrs.v, vrs.r, vrs.s)
+    )
   }
 
   //

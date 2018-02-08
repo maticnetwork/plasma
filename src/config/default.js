@@ -1,5 +1,6 @@
 import path from 'path'
 import dotenv from 'dotenv'
+import {Buffer} from 'safe-buffer'
 
 // load config env
 let root = path.normalize(`${__dirname}/../..`)
@@ -12,6 +13,14 @@ export default {
   app: {
     name: process.env.APP_NAME || 'Plasma Chain',
     port: process.env.APP_PORT || 8080
+  },
+  // level db prefixes
+  prefixes: {
+    blockDetails: Buffer.from('blockDetails'),
+    utxo: Buffer.from('utxo'),
+    deposit: Buffer.from('deposit'),
+    tx: Buffer.from('tx'),
+    txpool: Buffer.from('txpool')
   },
   chain: {
     db: process.env.CHAIN_DB || './db',

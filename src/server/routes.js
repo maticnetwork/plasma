@@ -3,6 +3,7 @@ import {Router} from 'express'
 import {Validator} from 'jsonschema'
 
 import chain from '../chain'
+import {getAllUTXOs, getTxByHash} from '../chain/manager'
 
 // RPC schema and validator
 const rpcSchema = {
@@ -47,9 +48,28 @@ const methods = {
     try {
       const hash = await chain.addTx(txBytes)
       return utils.bufferToHex(hash)
-    } catch (e) {
-      console.log(e)
-    }
+    } catch (e) {}
+
+    return null
+  },
+
+  async getTxByHash([txHash]) {
+    let tx = {}
+    try {
+      const obj = await getTxByHash(txHash)
+      if (obj) {
+        tx = obj.toJSON(true)
+      }
+    } catch (e) {}
+
+    return tx
+  },
+
+  async getUTXOs([address]) {
+    try {
+      return await getAllUTXOs(address)
+    } catch (e) {}
+    return []
   }
 }
 

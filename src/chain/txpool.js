@@ -1,6 +1,7 @@
-import timestamp from 'monotonic-timestamp'
 import {Buffer} from 'safe-buffer'
 import Transaction from './transaction'
+
+import config from '../config'
 
 export default class TxPool {
   constructor(db) {
@@ -8,8 +9,10 @@ export default class TxPool {
   }
 
   async push(tx) {
-    const ts = timestamp()
-    await this.db.put(Buffer.from(`tx-${ts}`), tx.serializeTx(true))
+    await this.db.put(
+      Buffer.concat([config.prefixes.txpool, tx.merkleHash()]),
+      tx.serializeTx(true)
+    )
   }
 
   async getTxs() {

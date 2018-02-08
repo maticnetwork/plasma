@@ -3,6 +3,7 @@ import utils from 'ethereumjs-util'
 import EthDagger from 'eth-dagger'
 import level from 'level'
 import EthereumTx from 'ethereumjs-tx'
+import {Buffer} from 'safe-buffer'
 
 import config from '../config'
 import Block from './block'
@@ -160,6 +161,34 @@ class Chain {
       return
     }
 
+    // check if any tx input is already spent
+    for (let i = 0; i < tx.totalInputs; i++) {
+      const sender = tx._getSender(i)
+      if (sender) {
+        const keyForUTXO = Buffer.concat([
+          config.prefixes.utxo,
+          utils.toBuffer(sender),
+          new BN(tx.raw[i * 3 + 0]).toArrayLike(Buffer, 'be', 32), // block number
+          new BN(tx.raw[i * 3 + 1]).toArrayLike(Buffer, 'be', 32), // tx index
+          new BN(tx.raw[i * 3 + 2]).toArrayLike(Buffer, 'be', 32) // output index
+        ])
+
+        let valueForUTXO = null
+        try {
+          valueForUTXO = await this.detailsDb.get(keyForUTXO, {
+            keyEncoding: 'binary',
+            valueEncoding: 'binary'
+          })
+        } catch (e) {
+          return
+        }
+
+        if (!valueForUTXO) {
+          return
+        }
+      }
+    }
+
     // add tx to pool
     await this.txPool.push(tx)
 
@@ -227,7 +256,10 @@ class Chain {
    * @param {String} hash - the sha256 hash of the rlp encoding of the block
    */
   async getDetails(hash) {
-    return this.detailsDb.get('detail:' + hash.toString('hex'), {
+    // key will be ['blockDetails', hash]
+    const key = Buffer.concat([config.prefixes.blockDetails, hash])
+    return this.detailsDb.get(key, {
+      keyEncoding: 'binary',
       valueEncoding: 'json'
     })
   }
@@ -260,11 +292,10 @@ class Chain {
     const blockNumber = new BN(block.header.number)
     const dbOps = []
 
-    if (!this.validate) {
-      const isValid = await block.validate(this)
-      if (!isValid) {
-        throw new Error('Invalid block')
-      }
+    // validate block
+    const isValid = await block.validate(this)
+    if (!isValid) {
+      throw new Error('Invalid block')
     }
 
     if (!blockNumber.isZero()) {
@@ -280,7 +311,8 @@ class Chain {
       dbOps.push({
         db: 'details',
         type: 'put',
-        key: 'detail:' + blockHashHexString,
+        key: Buffer.concat([config.prefixes.blockDetails, blockHash]),
+        keyEncoding: 'binary',
         valueEncoding: 'json',
         value: blockDetails
       })
@@ -302,6 +334,56 @@ class Chain {
         key: blockNumber.toString(),
         valueEncoding: 'binary',
         value: blockHash
+      })
+
+      // update utxo, deposits etc...
+      block.transactions.forEach((tx, txIndex) => {
+        // add tx to db, indexed by hash
+        dbOps.push({
+          db: 'details',
+          type: 'put',
+          key: Buffer.concat([config.prefixes.tx, tx.merkleHash()]),
+          keyEncoding: 'binary',
+          valueEncoding: 'binary',
+          value: tx.serializeTx(true)
+        })
+
+        for (let i = 0; i < tx.totalInputs; i++) {
+          const sender = tx._getSender(i)
+          // sender
+          if (sender) {
+            dbOps.push({
+              db: 'details',
+              type: 'del',
+              key: Buffer.concat([
+                config.prefixes.utxo,
+                utils.toBuffer(sender), // address
+                new BN(tx.raw[i * 3 + 0]).toArrayLike(Buffer, 'be', 32), // block number
+                new BN(tx.raw[i * 3 + 1]).toArrayLike(Buffer, 'be', 32), // tx index
+                new BN(tx.raw[i * 3 + 2]).toArrayLike(Buffer, 'be', 32) // output index
+              ]),
+              keyEncoding: 'binary',
+              valueEncoding: 'binary'
+            })
+          }
+        }
+
+        for (let i = 0; i < tx.totalOutputs; i++) {
+          dbOps.push({
+            db: 'details',
+            type: 'put',
+            key: Buffer.concat([
+              config.prefixes.utxo,
+              tx.raw[i * 2 + 6], // address
+              new BN(block.header.number).toArrayLike(Buffer, 'be', 32), // block number
+              new BN(txIndex).toArrayLike(Buffer, 'be', 32), // current tx index
+              new BN(i).toArrayLike(Buffer, 'be', 32) // output index
+            ]),
+            keyEncoding: 'binary',
+            valueEncoding: 'binary',
+            value: tx.serializeTx(true)
+          })
+        }
       })
     }
 
