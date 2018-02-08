@@ -55,7 +55,7 @@ const methods = {
   },
 
   async getUTXOs([address]) {
-    return await getAllUTXOs(address)
+    return getAllUTXOs(address)
   }
 }
 
