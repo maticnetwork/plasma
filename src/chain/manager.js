@@ -39,7 +39,13 @@ export async function getAllUTXOs(address) {
       })
       .on('data', data => {
         const tx = new Transaction(rlp.decode(data.value))
-        result.push(tx.toJSON(true))
+        const keyData = data.key.slice(-96)
+        result.push({
+          blockNumber: utils.bufferToHex(keyData.slice(0, 32)),
+          txIndex: utils.bufferToHex(keyData.slice(32, 64)),
+          outputIndex: utils.bufferToHex(keyData.slice(64)),
+          tx: tx.toJSON(true)
+        })
       })
       .on('error', function(err) {
         reject(err)
