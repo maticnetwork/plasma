@@ -16,6 +16,7 @@
     "clean": "rm -rf dist",
     "dev": "nodemon src/index.js --exec \"node\"",
     "build": "npm run clean && mkdir -p dist && babel src -s -D -d dist",
+    "start": "cross-env NODE_ENV=production node dist/index.js",
     "dagger": "woodendagger --url=http://localhost:8545"
   },
   "author": "Jaynti Kanani <jdkanani@gmail.com>",
@@ -39,8 +40,9 @@
   },
   "dependencies": {
     "body-parser": "^1.18.2",
+    "cross-env": "^5.1.3",
     "dotenv": "^4.0.0",
-    "eth-dagger": "0.0.1-beta.2",
+    "eth-dagger": "^0.0.1-beta.3",
     "ethereumjs-tx": "^1.3.3",
     "ethereumjs-util": "^5.1.3",
     "express": "^4.16.2",
