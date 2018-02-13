@@ -1,7 +1,5 @@
 import net from 'net'
-
 import utils from 'ethereumjs-util'
-import {Buffer} from 'safe-buffer'
 
 import Peer from '../lib/peer'
 
@@ -92,7 +90,7 @@ export default class SyncManager {
 
   cleanPeers() {
     Object.keys(this.peers).forEach(i => {
-      if (this.peers[i].state == 'closed') {
+      if (this.peers[i].state === 'closed') {
         delete this.peers[i]
       }
     })
@@ -165,7 +163,7 @@ export default class SyncManager {
           sender.send('msg', {
             type: 'RES:PEERS',
             from: this.hostString,
-            data: Object.keys(peers)
+            data: Object.keys(this.peers)
           })
         }
         break

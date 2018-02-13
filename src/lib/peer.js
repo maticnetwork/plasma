@@ -1,6 +1,5 @@
 import net from 'net'
 import EventEmitter from 'events'
-import util from 'util'
 import {Buffer} from 'safe-buffer'
 
 class Host {
