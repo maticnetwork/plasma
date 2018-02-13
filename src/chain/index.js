@@ -60,6 +60,9 @@ class Chain {
 
     // deposit block watcher
     this.depositBlockWatcher = this.parentDaggerContract.events.DepositBlockCreated()
+
+    // exit event watcher
+    this.exitEventWatcher = this.parentDaggerContract.events.StartExit()
   }
 
   async start() {
@@ -86,6 +89,19 @@ class Chain {
         [txBytes] // tx list
       )
     })
+
+    // start listening exits and mark them spent
+    this.exitEventWatcher.watch(data => {
+      const {owner, blockNumber, txIndex, outputIndex} = data.returnValues
+
+      // mark utxo spent after 2 sec
+      // TODO use better method to mark exited UTXO
+      setTimeout(() => {
+        this._markUTXOSpent(
+          Transaction.keyForUTXO(owner, blockNumber, txIndex, outputIndex)
+        )
+      }, 2000)
+    })
   }
 
   async stop() {
@@ -97,6 +113,9 @@ class Chain {
 
     // stop watching deposit block
     this.depositBlockWatcher.stopWatching()
+
+    // stop watching exit event
+    this.exitEventWatcher.stopWatching()
 
     // stop sync manager
     await this.syncManager.stop()
@@ -173,30 +192,30 @@ class Chain {
       return
     }
 
-    // check if any tx input is already spent
+    // check if any tx input is already spent or exited
     for (let i = 0; i < tx.totalInputs; i++) {
-      const sender = tx.senderByInputIndex(i)
-      if (sender) {
-        const [blkNumber, txIndex, oIndex] = tx.positionsByInputIndex(i)
-        const keyForUTXO = Buffer.concat([
-          config.prefixes.utxo,
-          utils.toBuffer(sender),
-          new BN(blkNumber).toArrayLike(Buffer, 'be', 32), // block number
-          new BN(txIndex).toArrayLike(Buffer, 'be', 32), // tx index
-          new BN(oIndex).toArrayLike(Buffer, 'be', 32) // output index
-        ])
-
-        let valueForUTXO = null
+      const keyForUTXO = tx.keyForUTXOByInputIndex(i)
+      if (keyForUTXO) {
         try {
-          valueForUTXO = await this.detailsDb.get(keyForUTXO, {
+          // check if utxo exist for given key
+          await this.detailsDb.get(keyForUTXO, {
             keyEncoding: 'binary',
             valueEncoding: 'binary'
           })
         } catch (e) {
+          // utxo has been spent as no value present
           return
         }
 
-        if (!valueForUTXO) {
+        // check if already exited
+        const exitId = +await this.parentContract.methods
+          .exitIds(tx.exitIdByInputIndex(i))
+          .call()
+
+        // if exit id > 0, utxo has been exited
+        if (exitId > 0) {
+          // mark it spent
+          await this._markUTXOSpent(keyForUTXO)
           return
         }
       }
@@ -245,9 +264,11 @@ class Chain {
 
     const lookupNumberToHash = hexString => {
       const key = new BN(hexString).toString()
-      return this.detailsDb.get(key, {
-        valueEncoding: 'binary'
-      })
+      return this.detailsDb
+        .get(key, {
+          valueEncoding: 'binary'
+        })
+        .catch(e => {})
     }
 
     // determine BlockTag type
@@ -257,7 +278,9 @@ class Chain {
 
     if (/^[0-9]+$/gi.test(String(blockTag))) {
       const blockHash = await lookupNumberToHash(blockTag)
-      return lookupByHash(blockHash)
+      if (blockHash) {
+        return lookupByHash(blockHash)
+      }
     }
 
     return null
@@ -460,6 +483,15 @@ class Chain {
       this.blockDb.batch(blockDbOps),
       this.detailsDb.batch(detailsDbOps)
     ])
+  }
+
+  async _markUTXOSpent(_keyForUTXO) {
+    const keyForUTXO = utils.toBuffer(_keyForUTXO)
+    // remove utxo for exited utxo
+    return this.detailsDb.del(keyForUTXO, {
+      keyEncoding: 'binary',
+      valueEncoding: 'binary'
+    })
   }
 
   async _sendTransaction(options = {}) {

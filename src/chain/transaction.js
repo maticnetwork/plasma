@@ -1,6 +1,8 @@
 import utils from 'ethereumjs-util'
 import {Buffer} from 'safe-buffer'
 
+import config from '../config'
+
 const BN = utils.BN
 const rlp = utils.rlp
 const ZeroBalance = new BN(0)
@@ -290,5 +292,45 @@ export default class Transaction {
    */
   amountByOutputIndex(index) {
     return this.raw[2 * index + 7]
+  }
+
+  /**
+   * Get exit id (as Buffer) by input index.
+   */
+  exitIdByInputIndex(index) {
+    const [blkNumber, txIndex, oIndex] = this.positionsByInputIndex(index)
+    if (utils.bufferToInt(blkNumber) === 0) {
+      return null
+    }
+
+    return (
+      utils.bufferToInt(blkNumber) * 1000000000 +
+      utils.bufferToInt(txIndex) * 10000 +
+      utils.bufferToInt(oIndex)
+    )
+  }
+
+  /**
+   * Get key for UTXO (as Buffer) by input index
+   */
+  keyForUTXOByInputIndex(index) {
+    const sender = this.senderByInputIndex(index)
+    if (sender) {
+      const [blkNumber, txIndex, oIndex] = this.positionsByInputIndex(index)
+      return Transaction.keyForUTXO(sender, blkNumber, txIndex, oIndex)
+    }
+
+    return null
+  }
+
+  // static method for utxo key
+  static keyForUTXO(sender, blkNumber, txIndex, oIndex) {
+    return Buffer.concat([
+      config.prefixes.utxo,
+      utils.toBuffer(sender),
+      new BN(blkNumber).toArrayLike(Buffer, 'be', 32), // block number
+      new BN(txIndex).toArrayLike(Buffer, 'be', 32), // tx index
+      new BN(oIndex).toArrayLike(Buffer, 'be', 32) // output index
+    ])
   }
 }

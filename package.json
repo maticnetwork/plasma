@@ -14,7 +14,8 @@
     "lint-contracts": "solhint -d contracts/**/*.sol",
     "lint-js": "eslint src/**/*.js test/**/*.js",
     "lint": "npm run lint-contracts && npm run lint-js",
-    "clean": "rm -rf dist",
+    "clean":
+      "rm -rf dist && rm -rf db/* && rm -rf testrpc-db/* && rm -rf devdb/*",
     "authorized-dev": "scripts/authorized-dev.sh",
     "dev": "scripts/dev.sh",
     "build": "npm run clean && mkdir -p dist && babel src -s -D -d dist",

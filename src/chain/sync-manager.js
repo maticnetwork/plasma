@@ -1,6 +1,7 @@
 import net from 'net'
 import utils from 'ethereumjs-util'
 
+import Block from './block'
 import Peer from '../lib/peer'
 
 const BN = utils.BN
@@ -9,12 +10,16 @@ export default class SyncManager {
   constructor(chain, options) {
     this.chain = chain
     this.options = options
+    this.syncing = true
 
     // peers
     this.peers = []
   }
 
   async start() {
+    // set status to syncing
+    this.syncing = true
+
     // Create a server and listen to peer messages
     this.server = net.createServer(socket => {
       console.log('New node connected', socket.remoteAddress, socket.remotePort)
@@ -39,18 +44,16 @@ export default class SyncManager {
       })
     })
 
-    // add peers from configuration
-    this.options.peers.forEach(peer => {
-      this.addPeer(peer)
+    // clean peers
+    this.pingPeers()
+
+    // add config peers
+    this.options.peers.forEach(p => {
+      this.addPeer(p)
     })
 
-    setTimeout(() => {
-      // ping peers
-      this.pingPeers()
-
-      // start syncing
-      this.sync()
-    }, 1000)
+    // sync
+    this.sync()
   }
 
   async stop() {
@@ -75,6 +78,9 @@ export default class SyncManager {
       this.options.peers.forEach(p => {
         this.addPeer(p)
       })
+
+      // sync
+      this.sync()
     }, 5000) // TODO: change it to 30000
 
     const ping = JSON.stringify({
@@ -128,7 +134,10 @@ export default class SyncManager {
     }
 
     if (storedBlockNumber.add(new BN(1)).lt(childBlockNumber)) {
-      this._syncBlocks()
+      this._syncBlocks(storedBlockNumber.add(new BN(1)).toNumber())
+    } else {
+      // No new blocks to sync yet
+      this.syncing = false
     }
   }
 
@@ -150,6 +159,46 @@ export default class SyncManager {
     let data
 
     switch (msg.type) {
+      case 'REQ:BLOCKS':
+        sender = this.peers[msg.from]
+        if (sender) {
+          const fromBlock = +msg.fromBlock
+          const p = []
+          if (fromBlock > 0) {
+            for (let i = fromBlock; i < fromBlock + 5; i++) {
+              p.push(this.chain.getBlock(i))
+            }
+
+            Promise.all(p)
+              .then((result = []) => {
+                result = result
+                  .filter(r => r)
+                  .map(r => utils.bufferToHex(r.serialize()))
+
+                // send blocks
+                sender.send(
+                  'msg',
+                  JSON.stringify({
+                    type: 'RES:BLOCKS',
+                    from: this.hostString,
+                    data: result
+                  })
+                )
+              })
+              .catch(e => {
+                // supress error if any
+              })
+          }
+        }
+        break
+      case 'RES:BLOCKS':
+        data = msg.data || []
+        this.chain.putBlocks(
+          data.map(d => {
+            return new Block(utils.toBuffer(d))
+          })
+        )
+        break
       case 'RES:PEERS':
         data = msg.data || []
         // add new peers
@@ -160,11 +209,14 @@ export default class SyncManager {
       case 'REQ:PEERS':
         sender = this.peer[msg.from]
         if (sender) {
-          sender.send('msg', {
-            type: 'RES:PEERS',
-            from: this.hostString,
-            data: Object.keys(this.peers)
-          })
+          sender.send(
+            'msg',
+            JSON.stringify({
+              type: 'RES:PEERS',
+              from: this.hostString,
+              data: Object.keys(this.peers)
+            })
+          )
         }
         break
       case 'PING':
@@ -178,5 +230,39 @@ export default class SyncManager {
   //
   // Sync blocks
   //
-  _syncBlock(start) {}
+  _syncBlocks(start) {
+    const peers = this._getRandomPeers()
+    peers.forEach(p => {
+      // requesting blocks
+      p.send(
+        'msg',
+        JSON.stringify({
+          type: 'REQ:BLOCKS',
+          from: this.hostString,
+          fromBlock: start,
+          data: null
+        })
+      )
+    })
+  }
+
+  //
+  // Utils functions
+  //
+  _getRandomPeers(n = 2) {
+    const peers = Object.keys(this.peers)
+    if (!peers || peers.length === 0) {
+      return []
+    }
+
+    const arr = []
+    while (arr.length < Math.min(peers.length, n)) {
+      const rn = Math.floor(Math.random() * peers.length)
+      if (arr.indexOf(rn) > -1) {
+        continue
+      }
+      arr.push(rn)
+    }
+    return arr.map(a => this.peers[peers[a]])
+  }
 }

@@ -3,6 +3,7 @@ import {Buffer} from 'safe-buffer'
 
 import BlockHeader from './block-header'
 import Transaction from './transaction'
+import FixedMerkleTree from '../lib/fixed-merkle-tree'
 
 const rlp = utils.rlp
 
@@ -78,6 +79,12 @@ export default class Block {
 
     const results = await Promise.all(p)
     if (!results.every(r => r)) {
+      return false
+    }
+
+    const merkleHashes = this.transactions.map(tx => tx.merkleHash())
+    const tree = new FixedMerkleTree(16, merkleHashes)
+    if (Buffer.compare(tree.getRoot(), this.header.root) !== 0) {
       return false
     }
 
