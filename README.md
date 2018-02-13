@@ -30,6 +30,9 @@ $ npm run dagger
 # deploy contracts
 $ npm run deploy
 
+# start authority's server
+$ npm run authorized-dev
+
 # start dev server
 $ npm run dev
 ```
@@ -59,3 +62,6 @@ You can override default configurations by creating `config.env` file in root di
 | CHAIN_DAGGER                | Mqtt URL for dagger server's endpoint                                                                | `mqtt://localhost:1883` |
 | CHAIN_AUTHORITY_ADDRESS     | Authority address for PoA                                                                            | `0x9fB2...791`          |
 | CHAIN_AUTHORITY_PRIVATE_KEY | Authority's private key for PoA                                                                      | `0x9b28...5d3`          |
+| NETWORK_EXTERNAL_HOST       | Network's external host (for sync)                                                                   | `0.0.0.0`               |
+| NETWORK_PORT                | Network's port (for sync)                                                                            | `8081`                  |
+| NETWORK_PEERS               | Pre-defined peers (for sync)                                                                         |                         |

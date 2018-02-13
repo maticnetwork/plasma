@@ -6,5 +6,7 @@ dist/
 
 db/*
 !db/.gitkeep
+devdb/*
+!devdb/.gitkeep
 testrpc-db/*
 !testrpc-db/.gitkeep

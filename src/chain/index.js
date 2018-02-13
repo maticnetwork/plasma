@@ -9,6 +9,7 @@ import config from '../config'
 import Block from './block'
 import Transaction from './transaction'
 import TxPool from './txpool'
+import SyncManager from './sync-manager'
 import FixedMerkleTree from '../lib/fixed-merkle-tree'
 
 import RootChain from '../../build/contracts/RootChain.json'
@@ -28,6 +29,9 @@ class Chain {
       })
     )
 
+    // sync manager
+    this.syncManager = new SyncManager(this, this.options.network)
+
     // create instance for web3
     this.web3 = new Web3(this.options.web3Provider)
 
@@ -45,9 +49,11 @@ class Chain {
     // Watchers
     //
 
-    // watch root chain's block
-    this._rootBlock = this._rootBlock.bind(this)
-    this.daggerObject.on('latest:block.number', this._rootBlock)
+    // watch root chain's block (and submit block)
+    if (this.options.authorizedNode) {
+      this._rootBlock = this._rootBlock.bind(this)
+      this.daggerObject.on('latest:block.number', this._rootBlock)
+    }
 
     // block watcher
     this.blockWatcher = this.parentDaggerContract.events.ChildBlockCreated()
@@ -57,6 +63,9 @@ class Chain {
   }
 
   async start() {
+    // start sync manager
+    await this.syncManager.start()
+
     // start listening block
     this.blockWatcher.watch((data, removed) => {
       const {blockNumber, root} = data.returnValues
@@ -88,6 +97,9 @@ class Chain {
 
     // stop watching deposit block
     this.depositBlockWatcher.stopWatching()
+
+    // stop sync manager
+    await this.syncManager.stop()
   }
 
   async _updateBlockNumber(root, blockNumber) {
@@ -252,8 +264,8 @@ class Chain {
   }
 
   /**
-   * Gets a block by its hash
-   * @method getBlockInfo
+   * Gets block details by block has
+   * @method getDetails
    * @param {String} hash - the sha256 hash of the rlp encoding of the block
    */
   async getDetails(hash) {
@@ -263,6 +275,22 @@ class Chain {
       keyEncoding: 'binary',
       valueEncoding: 'json'
     })
+  }
+
+  /**
+   * Gets a latest block details
+   * @method getLatestHead
+   */
+  async getLatestHead() {
+    const key = Buffer.concat([config.prefixes.latestHead])
+    return this.detailsDb
+      .get(key, {
+        keyEncoding: 'binary',
+        valueEncoding: 'json'
+      })
+      .catch(e => {
+        // supress key error for new node
+      })
   }
 
   /**
@@ -307,6 +335,16 @@ class Chain {
         totalTxs: block.transactions.length,
         header: block.header.toJSON(true)
       }
+
+      // put chain head
+      dbOps.push({
+        db: 'details',
+        type: 'put',
+        key: Buffer.concat([config.prefixes.latestHead]),
+        keyEncoding: 'binary',
+        valueEncoding: 'json',
+        value: blockDetails
+      })
 
       // hash -> details
       dbOps.push({
