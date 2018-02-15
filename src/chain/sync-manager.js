@@ -141,6 +141,17 @@ export default class SyncManager {
     }
   }
 
+  broadcastNewTx(txBytes, excluded) {
+    const message = JSON.stringify({
+      type: 'TX:ADD',
+      from: this.hostString,
+      data: txBytes
+    })
+
+    // broadcast message
+    this.broadcastMessage(message, excluded)
+  }
+
   broadcastMessage(message, excluded = []) {
     Object.keys(this.peers).forEach(p => {
       if (
@@ -217,6 +228,12 @@ export default class SyncManager {
               data: Object.keys(this.peers)
             })
           )
+        }
+        break
+      case 'TX:ADD':
+        sender = this.peers[msg.from]
+        if (sender) {
+          this.chain.addTx(msg.data, [msg.from])
         }
         break
       case 'PING':

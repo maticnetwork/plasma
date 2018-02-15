@@ -62,13 +62,14 @@ export async function getTxByHash(txHash) {
   }
 
   const hashBuffer = utils.toBuffer(txHash)
-  const d = await chain.detailsDb.get(
-    Buffer.concat([config.prefixes.tx, hashBuffer]),
-    {
-      keyEncoding: 'binary',
-      valueEncoding: 'binary'
-    }
-  )
+  try {
+    const d = await chain.detailsDb.get(
+      Buffer.concat([config.prefixes.tx, hashBuffer])
+    )
+    return new Transaction(rlp.decode(d))
+  } catch (e) {
+    // tx not found
+  }
 
-  return new Transaction(rlp.decode(d))
+  return null
 }

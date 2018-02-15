@@ -22,6 +22,27 @@ const rpcValidator = new Validator()
 const routes = Router()
 
 const methods = {
+  async getLatestBlockNumber() {
+    const blockDetails = await chain.getLatestHead()
+    if (blockDetails) {
+      return parseInt(blockDetails.number.toString('hex'), 16).toString()
+    }
+
+    return null
+  },
+
+  async getLatestBlock() {
+    const blockDetails = await chain.getLatestHead()
+    if (blockDetails) {
+      const obj = await chain.getBlock(utils.toBuffer(blockDetails.hash))
+      if (obj) {
+        return obj.toJSON(true)
+      }
+    }
+
+    return null
+  },
+
   async getBlockByNumber([blockNumber]) {
     const obj = await chain.getBlock(blockNumber)
     if (obj) {

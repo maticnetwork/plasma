@@ -8,7 +8,7 @@ import {Buffer} from 'safe-buffer'
 import config from '../config'
 import Block from './block'
 import Transaction from './transaction'
-import TxPool from './txpool'
+import TxPool from './txPool'
 import SyncManager from './sync-manager'
 import FixedMerkleTree from '../lib/fixed-merkle-tree'
 
@@ -16,18 +16,20 @@ import RootChain from '../../build/contracts/RootChain.json'
 
 const BN = utils.BN
 const rlp = utils.rlp
+const defaultDBOptions = {
+  keyEncoding: 'binary',
+  valueEncoding: 'binary'
+}
 
 class Chain {
   constructor(options = {}) {
     this.options = options
-    this.blockDb = level(`${this.options.db}/block`)
-    this.detailsDb = level(`${this.options.db}/details`)
-    this.txPool = new TxPool(
-      level(`${this.options.db}/txpool`, {
-        keyEncoding: 'binary',
-        valueEncoding: 'binary'
-      })
-    )
+    this.blockDb = level(`${this.options.db}/block`, defaultDBOptions)
+    this.detailsDb = level(`${this.options.db}/details`, defaultDBOptions)
+    this.txPoolDb = level(`${this.options.db}/txPool`, defaultDBOptions)
+
+    // transaction pool
+    this.txPool = new TxPool(this.txPoolDb)
 
     // sync manager
     this.syncManager = new SyncManager(this, this.options.network)
@@ -178,7 +180,7 @@ class Chain {
     }
   }
 
-  async addTx(txBytes) {
+  async addTx(txBytes, exclude) {
     // get tx
     const tx = new Transaction(rlp.decode(txBytes))
 
@@ -198,10 +200,7 @@ class Chain {
       if (keyForUTXO) {
         try {
           // check if utxo exist for given key
-          await this.detailsDb.get(keyForUTXO, {
-            keyEncoding: 'binary',
-            valueEncoding: 'binary'
-          })
+          await this.detailsDb.get(keyForUTXO)
         } catch (e) {
           // utxo has been spent as no value present
           return
@@ -230,6 +229,11 @@ class Chain {
     // log tx pool entry
     console.log(`New transaction added into pool: ${utils.bufferToHex(hash)}`)
 
+    // broadcast tx to peers
+    setTimeout(() => {
+      this.syncManager.broadcastNewTx(txBytes, exclude)
+    })
+
     // return merkle hash for reference
     return hash
   }
@@ -252,10 +256,7 @@ class Chain {
   async getBlock(blockTag) {
     const lookupByHash = hash => {
       return this.blockDb
-        .get(hash, {
-          keyEncoding: 'binary',
-          valueEncoding: 'binary'
-        })
+        .get(hash)
         .then(encodedBlock => {
           return new Block(rlp.decode(encodedBlock))
         })
@@ -264,11 +265,7 @@ class Chain {
 
     const lookupNumberToHash = hexString => {
       const key = new BN(hexString).toString()
-      return this.detailsDb
-        .get(key, {
-          valueEncoding: 'binary'
-        })
-        .catch(e => {})
+      return this.detailsDb.get(key).catch(e => {})
     }
 
     // determine BlockTag type
@@ -295,7 +292,6 @@ class Chain {
     // key will be ['blockDetails', hash]
     const key = Buffer.concat([config.prefixes.blockDetails, hash])
     return this.detailsDb.get(key, {
-      keyEncoding: 'binary',
       valueEncoding: 'json'
     })
   }
@@ -308,7 +304,6 @@ class Chain {
     const key = Buffer.concat([config.prefixes.latestHead])
     return this.detailsDb
       .get(key, {
-        keyEncoding: 'binary',
         valueEncoding: 'json'
       })
       .catch(e => {
@@ -364,7 +359,6 @@ class Chain {
         db: 'details',
         type: 'put',
         key: Buffer.concat([config.prefixes.latestHead]),
-        keyEncoding: 'binary',
         valueEncoding: 'json',
         value: blockDetails
       })
@@ -374,7 +368,6 @@ class Chain {
         db: 'details',
         type: 'put',
         key: Buffer.concat([config.prefixes.blockDetails, blockHash]),
-        keyEncoding: 'binary',
         valueEncoding: 'json',
         value: blockDetails
       })
@@ -384,8 +377,6 @@ class Chain {
         db: 'block',
         type: 'put',
         key: blockHash,
-        keyEncoding: 'binary',
-        valueEncoding: 'binary',
         value: block.serialize()
       })
 
@@ -394,7 +385,6 @@ class Chain {
         db: 'details',
         type: 'put',
         key: blockNumber.toString(),
-        valueEncoding: 'binary',
         value: blockHash
       })
 
@@ -405,8 +395,6 @@ class Chain {
           db: 'details',
           type: 'put',
           key: Buffer.concat([config.prefixes.tx, tx.merkleHash()]),
-          keyEncoding: 'binary',
-          valueEncoding: 'binary',
           value: tx.serializeTx(true)
         })
 
@@ -424,9 +412,7 @@ class Chain {
                 new BN(blkNumber).toArrayLike(Buffer, 'be', 32), // block number
                 new BN(txIndex).toArrayLike(Buffer, 'be', 32), // tx index
                 new BN(oIndex).toArrayLike(Buffer, 'be', 32) // output index
-              ]),
-              keyEncoding: 'binary',
-              valueEncoding: 'binary'
+              ])
             })
           }
         }
@@ -442,11 +428,16 @@ class Chain {
               new BN(txIndex).toArrayLike(Buffer, 'be', 32), // current tx index
               new BN(i).toArrayLike(Buffer, 'be', 32) // output index
             ]),
-            keyEncoding: 'binary',
-            valueEncoding: 'binary',
             value: tx.serializeTx(true)
           })
         }
+
+        // remove tx from pool
+        dbOps.push({
+          db: 'txPool',
+          type: 'del',
+          key: this.txPool.keyForTx(tx)
+        })
       })
     }
 
@@ -455,8 +446,6 @@ class Chain {
       db: 'block',
       type: 'put',
       key: block.header.root,
-      keyEncoding: 'binary',
-      valueEncoding: 'binary',
       value: block.serialize()
     })
 
@@ -466,6 +455,7 @@ class Chain {
   async _batchDbOps(dbOps) {
     const blockDbOps = []
     const detailsDbOps = []
+    const txPoolDbOps = []
     dbOps.forEach(op => {
       switch (op.db) {
         case 'block':
@@ -474,6 +464,9 @@ class Chain {
         case 'details':
           detailsDbOps.push(op)
           break
+        case 'txPool':
+          txPoolDbOps.push(op)
+          break
         default:
           throw new Error('DB op did not specify known db:', op)
       }
@@ -481,17 +474,15 @@ class Chain {
 
     return Promise.all([
       this.blockDb.batch(blockDbOps),
-      this.detailsDb.batch(detailsDbOps)
+      this.detailsDb.batch(detailsDbOps),
+      this.txPoolDb.batch(txPoolDbOps)
     ])
   }
 
   async _markUTXOSpent(_keyForUTXO) {
     const keyForUTXO = utils.toBuffer(_keyForUTXO)
     // remove utxo for exited utxo
-    return this.detailsDb.del(keyForUTXO, {
-      keyEncoding: 'binary',
-      valueEncoding: 'binary'
-    })
+    return this.detailsDb.del(keyForUTXO)
   }
 
   async _sendTransaction(options = {}) {

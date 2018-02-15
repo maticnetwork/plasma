@@ -9,10 +9,11 @@ export default class TxPool {
   }
 
   async push(tx) {
-    await this.db.put(
-      Buffer.concat([config.prefixes.txpool, tx.merkleHash()]),
-      tx.serializeTx(true)
-    )
+    return this.db.put(this.keyForTx(tx), tx.serializeTx(true))
+  }
+
+  async pop(tx) {
+    return this.db.del(this.keyForTx(tx))
   }
 
   async getTxs() {
@@ -52,5 +53,10 @@ export default class TxPool {
     })
     await batch.write()
     return result
+  }
+
+  // get key for tx
+  keyForTx(tx) {
+    return Buffer.concat([config.prefixes.txpool, tx.merkleHash()])
   }
 }
