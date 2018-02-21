@@ -4,6 +4,7 @@ import utils from 'ethereumjs-util'
 
 import assertRevert from './helpers/assertRevert'
 import {mineToBlockHeight} from './helpers/utils'
+import {generateFirstWallets} from './helpers/wallets'
 
 // import chain components
 import Transaction from '../src/chain/transaction'
@@ -14,14 +15,17 @@ let RootChain = artifacts.require('./RootChain.sol')
 
 const BN = utils.BN
 const rlp = utils.rlp
-const keyPair = require('./keypair')
-keyPair.key1 = utils.toBuffer(keyPair.key1)
 
 const printReceiptEvents = receipt => {
   receipt.logs.forEach(l => {
     console.log(JSON.stringify(l.args))
   })
 }
+
+// generate first 5 wallets
+const mnemonics =
+  'clock radar mass judge dismiss just intact mind resemble fringe diary casino'
+const wallets = generateFirstWallets(mnemonics, 5)
 
 const getDepositTx = (owner, value) => {
   return new Transaction([
@@ -53,7 +57,7 @@ contract('Root chain', function(accounts) {
     // before task
     before(async function() {
       rootChain = await RootChain.new({from: accounts[0]})
-      owner = keyPair.address1 // same as accounts[0]
+      owner = wallets[0].getAddressString() // same as accounts[0]
     })
 
     it('should allow user to deposit ETH into plasma chain', async function() {
@@ -89,8 +93,8 @@ contract('Root chain', function(accounts) {
 
       // generate proof
       const merkleHash = depositTx.merkleHash()
-      // depositTx.sign1(keyPair.key1) // sign1
-      // depositTx.sign2(keyPair.key2) // sign2
+      // depositTx.sign1(wallets[0].getPrivateKey()) // sign1
+      // depositTx.sign2(wallets[0].getPrivateKey()) // sign2
       const tree = new FixedMerkleTree(16, [merkleHash])
       const proof = utils.bufferToHex(
         Buffer.concat(tree.getPlasmaProof(merkleHash))
@@ -99,7 +103,7 @@ contract('Root chain', function(accounts) {
         Buffer.concat([
           depositTx.sig1,
           depositTx.sig2,
-          depositTx.confirmSig(childChainRoot, keyPair.key1)
+          depositTx.confirmSig(childChainRoot, wallets[0].getPrivateKey())
         ])
       )
 
@@ -144,7 +148,7 @@ contract('Root chain', function(accounts) {
     // before task
     before(async function() {
       rootChain = await RootChain.new({from: accounts[0]})
-      owner = keyPair.address1 // same as accounts[0]
+      owner = wallets[0].getAddressString() // same as accounts[0]
     })
 
     it('should allow user to withdraw', async function() {
@@ -180,8 +184,8 @@ contract('Root chain', function(accounts) {
       const transferTxBytes = utils.bufferToHex(transferTx.serializeTx())
 
       // generate proof
-      transferTx.sign1(keyPair.key1) // sign1
-      // transferTx.sign2(keyPair.key2) // sign2
+      transferTx.sign1(wallets[0].getPrivateKey()) // sign1
+      // transferTx.sign2(wallets[0].getPrivateKey()) // sign2
       const merkleHash = transferTx.merkleHash()
       const tree = new FixedMerkleTree(16, [merkleHash])
       const proof = utils.bufferToHex(
@@ -213,7 +217,7 @@ contract('Root chain', function(accounts) {
         Buffer.concat([
           transferTx.sig1,
           transferTx.sig2,
-          transferTx.confirmSig(childChainRoot, keyPair.key1)
+          transferTx.confirmSig(childChainRoot, wallets[0].getPrivateKey())
         ])
       )
 
@@ -241,7 +245,7 @@ contract('Root chain', function(accounts) {
     // before task
     before(async function() {
       rootChain = await RootChain.new({from: accounts[0]})
-      owner = keyPair.address1 // same as accounts[0]
+      owner = wallets[0].getAddressString() // same as accounts[0]
     })
 
     it('should allow user to withdraw', async function() {
@@ -285,8 +289,8 @@ contract('Root chain', function(accounts) {
       let transferTxBytes = utils.bufferToHex(transferTx.serializeTx())
 
       // generate proof
-      transferTx.sign1(keyPair.key1) // sign1
-      transferTx.sign2(keyPair.key1) // sign2
+      transferTx.sign1(wallets[0].getPrivateKey()) // sign1
+      transferTx.sign2(wallets[0].getPrivateKey()) // sign2
       const merkleHash = transferTx.merkleHash()
       const tree = new FixedMerkleTree(16, [merkleHash])
       const proof = utils.bufferToHex(
@@ -313,8 +317,8 @@ contract('Root chain', function(accounts) {
         Buffer.concat([
           transferTx.sig1,
           transferTx.sig2,
-          transferTx.confirmSig(childChainRoot, keyPair.key1),
-          transferTx.confirmSig(childChainRoot, keyPair.key1)
+          transferTx.confirmSig(childChainRoot, wallets[0].getPrivateKey()),
+          transferTx.confirmSig(childChainRoot, wallets[0].getPrivateKey())
         ])
       )
 
@@ -342,7 +346,7 @@ contract('Root chain', function(accounts) {
     // before task
     before(async function() {
       rootChain = await RootChain.new({from: accounts[0]})
-      owner = keyPair.address1 // same as accounts[0]
+      owner = wallets[0].getAddressString() // same as accounts[0]
     })
 
     it('should allow user to challenge bad tx', async function() {
@@ -374,7 +378,10 @@ contract('Root chain', function(accounts) {
       let childChainRoot = utils.toBuffer(
         (await rootChain.getChildChain(currentChildBlock))[0]
       )
-      let confirmSig = depositTx.confirmSig(childChainRoot, keyPair.key1)
+      let confirmSig = depositTx.confirmSig(
+        childChainRoot,
+        wallets[0].getPrivateKey()
+      )
       let sigs = utils.bufferToHex(
         Buffer.concat([depositTx.sig1, depositTx.sig2, confirmSig])
       )
@@ -409,7 +416,7 @@ contract('Root chain', function(accounts) {
 
       // serialize tx bytes
       let transferTxBytes = utils.bufferToHex(transferTx.serializeTx())
-      transferTx.sign1(keyPair.key1) // sign1
+      transferTx.sign1(wallets[0].getPrivateKey()) // sign1
       merkleHash = transferTx.merkleHash()
       tree = new FixedMerkleTree(16, [merkleHash])
       proof = utils.bufferToHex(Buffer.concat(tree.getPlasmaProof(merkleHash)))
@@ -428,7 +435,10 @@ contract('Root chain', function(accounts) {
       childChainRoot = utils.toBuffer(
         (await rootChain.getChildChain(currentChildBlock))[0]
       )
-      confirmSig = transferTx.confirmSig(childChainRoot, keyPair.key1)
+      confirmSig = transferTx.confirmSig(
+        childChainRoot,
+        wallets[0].getPrivateKey()
+      )
       sigs = utils.bufferToHex(
         Buffer.concat([transferTx.sig1, transferTx.sig2])
       )
