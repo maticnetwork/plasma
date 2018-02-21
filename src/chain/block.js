@@ -90,4 +90,20 @@ export default class Block {
 
     return true
   }
+
+  getMerkleProof(txIndex) {
+    if (txIndex < 0 || txIndex >= this.transactions.length) {
+      return null
+    }
+
+    const merkleHashes = this.transactions.map(tx => tx.merkleHash())
+    const tree = new FixedMerkleTree(16, merkleHashes)
+    return {
+      root: tree.getRoot(),
+      leaf: this.transactions[txIndex].merkleHash(),
+      proof: Buffer.concat(
+        tree.getPlasmaProof(this.transactions[txIndex].merkleHash())
+      )
+    }
+  }
 }

@@ -77,6 +77,21 @@ const methods = {
 
   async getUTXOs([address]) {
     return getAllUTXOs(address)
+  },
+
+  async getMerkleProof([blockNumber, txIndex]) {
+    const block = await chain.getBlock(blockNumber)
+    if (block && !isNaN(txIndex)) {
+      const obj = block.getMerkleProof(txIndex)
+      if (obj) {
+        return {
+          root: utils.bufferToHex(obj.root),
+          leaf: utils.bufferToHex(obj.leaf),
+          proof: utils.bufferToHex(obj.proof)
+        }
+      }
+    }
+    return null
   }
 }
 
