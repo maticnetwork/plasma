@@ -12,6 +12,7 @@ import FixedMerkleTree from '../src/lib/fixed-merkle-tree'
 
 // require root chain
 let RootChain = artifacts.require('./RootChain.sol')
+let DummyToken = artifacts.require('./test/DummyToken.sol')
 
 const BN = utils.BN
 const rlp = utils.rlp
@@ -51,13 +52,15 @@ contract('Root chain', function(accounts) {
     const value = new BN(web3.toWei(1, 'ether'))
 
     let rootChain
+    let token1
     let owner
     let depositTx
 
     // before task
     before(async function() {
-      rootChain = await RootChain.new({from: accounts[0]})
       owner = wallets[0].getAddressString() // same as accounts[0]
+      token1 = await DummyToken.new('Test', 'TNT', {from: owner})
+      rootChain = await RootChain.new(token1.address, {from: accounts[0]})
     })
 
     it('should allow user to deposit ETH into plasma chain', async function() {
@@ -66,10 +69,11 @@ contract('Root chain', function(accounts) {
       // serialize tx bytes
       const txBytes = utils.bufferToHex(depositTx.serializeTx())
 
+      // approve transfer first
+      await token1.approve(rootChain.address, value.toString(), {from: owner})
       // deposit
       const receipt = await rootChain.deposit(txBytes, {
-        from: owner,
-        value: value
+        from: owner
       })
 
       assert.equal(receipt.logs.length, 3)
@@ -144,10 +148,12 @@ contract('Root chain', function(accounts) {
     let rootChain
     let owner
     let depositTx
+    let token1
 
     // before task
     before(async function() {
-      rootChain = await RootChain.new({from: accounts[0]})
+      token1 = await DummyToken.new('Test', 'TNT')
+      rootChain = await RootChain.new(token1.address, {from: accounts[0]})
       owner = wallets[0].getAddressString() // same as accounts[0]
     })
 
@@ -157,10 +163,11 @@ contract('Root chain', function(accounts) {
       // serialize tx bytes
       const txBytes = utils.bufferToHex(depositTx.serializeTx())
 
+      // approve
+      await token1.approve(rootChain.address, value.toString(), {from: owner})
       // deposit
       await rootChain.deposit(txBytes, {
-        from: owner,
-        value: value
+        from: owner
       })
 
       let transferTx = new Transaction([
@@ -241,28 +248,32 @@ contract('Root chain', function(accounts) {
     let rootChain
     let owner
     let depositTx
+    let token1
 
     // before task
     before(async function() {
-      rootChain = await RootChain.new({from: accounts[0]})
+      token1 = await DummyToken.new('Test', 'TNT')
+      rootChain = await RootChain.new(token1.address, {from: accounts[0]})
       owner = wallets[0].getAddressString() // same as accounts[0]
     })
 
     it('should allow user to withdraw', async function() {
       depositTx = getDepositTx(owner, value)
 
+      // approve the transfer
+      await token1.approve(rootChain.address, value.toString(), {from: owner})
       // deposit 1
       await rootChain.deposit(utils.bufferToHex(depositTx.serializeTx()), {
-        from: owner,
-        value: value
+        from: owner
       })
 
       const block1 = (await rootChain.currentChildBlock()).toNumber() - 1
 
+      // approve the transfer
+      await token1.approve(rootChain.address, value.toString(), {from: owner})
       // deposit 2
       await rootChain.deposit(utils.bufferToHex(depositTx.serializeTx()), {
-        from: owner,
-        value: value
+        from: owner
       })
 
       const block2 = (await rootChain.currentChildBlock()).toNumber() - 1
@@ -331,7 +342,7 @@ contract('Root chain', function(accounts) {
 
       const [user, amount, posResult] = await rootChain.getExit(priority)
       assert.equal(user, owner)
-      assert.equal(amount.toString(), value)
+      assert.equal(amount.toString(), value.toString())
       assert.deepEqual(pos, posResult.map(p => p.toNumber()))
     })
   })
@@ -342,10 +353,12 @@ contract('Root chain', function(accounts) {
     let rootChain
     let owner
     let depositTx
+    let token1
 
     // before task
     before(async function() {
-      rootChain = await RootChain.new({from: accounts[0]})
+      token1 = await DummyToken.new('Test', 'TNT')
+      rootChain = await RootChain.new(token1.address, {from: accounts[0]})
       owner = wallets[0].getAddressString() // same as accounts[0]
     })
 
@@ -359,10 +372,11 @@ contract('Root chain', function(accounts) {
       // serialize tx bytes
       let depositTxBytes = utils.bufferToHex(depositTx.serializeTx())
 
+      // approve transfer first
+      await token1.approve(rootChain.address, value.toString(), {from: owner})
       // deposit
       await rootChain.deposit(depositTxBytes, {
-        from: owner,
-        value: value
+        from: owner
       })
 
       //
