@@ -7,6 +7,7 @@ import "./lib/Merkle.sol";
 import "./lib/Validate.sol";
 
 import "./ds/PriorityQueue.sol";
+import "./token/StandardToken.sol";
 
 
 contract RootChain {
@@ -32,6 +33,7 @@ contract RootChain {
   /*
    *  Storage
    */
+  address public token;
   mapping(uint256 => ChildBlock) public childChain;
   mapping(uint256 => Exit) public exits;
   mapping(uint256 => uint256) public exitIds;
@@ -73,10 +75,11 @@ contract RootChain {
     _;
   }
 
-  function RootChain()
+  function RootChain(address _token)
     public
   {
     authority = msg.sender;
+    token = _token;
     currentChildBlock = 1;
     lastParentBlock = block.number;
     exitsQueue = new PriorityQueue();
@@ -98,17 +101,19 @@ contract RootChain {
     lastParentBlock = block.number;
   }
 
-  function deposit(bytes txBytes)
-    public
-    payable
-  {
+  function deposit(bytes txBytes) public {
     var txList = txBytes.toRLPItem().toList();
     require(txList.length == 11);
     for (uint256 i; i < 6; i++) {
       require(txList[i].toUint() == 0);
     }
-    require(txList[7].toUint() == msg.value);
+    require(txList[7].toUint() > 0);
     require(txList[9].toUint() == 0);
+
+    // transfer tokens to this contract
+    StandardToken tokenObj = StandardToken(token);
+    require(tokenObj.transferFrom(msg.sender, address(this), txList[7].toUint()));
+
     bytes32 zeroBytes;
     bytes32 root = keccak256(keccak256(txBytes), new bytes(130));
     for (i = 0; i < 16; i++) {
@@ -215,9 +220,13 @@ contract RootChain {
   {
     uint256 twoWeekOldTimestamp = block.timestamp.sub(2 weeks);
     Exit memory currentExit = exits[exitsQueue.getMin()];
+    StandardToken tokenObj = StandardToken(token);
     while (childChain[currentExit.utxoPos[0]].createdAt < twoWeekOldTimestamp && exitsQueue.currentSize() > 0) {
       uint256 exitId = currentExit.utxoPos[0] * 1000000000 + currentExit.utxoPos[1] * 10000 + currentExit.utxoPos[2];
-      currentExit.owner.transfer(currentExit.amount);
+
+      // transfer token to owner
+      tokenObj.transfer(currentExit.owner, currentExit.amount);
+
       uint256 priority = exitsQueue.delMin();
       delete exits[priority];
       currentExit = exits[exitsQueue.getMin()];
