@@ -1,6 +1,5 @@
 import Web3 from 'web3'
 import utils from 'ethereumjs-util'
-import EthDagger from 'eth-dagger'
 import level from 'level'
 import EthereumTx from 'ethereumjs-tx'
 import {Buffer} from 'safe-buffer'
@@ -10,6 +9,7 @@ import Block from './block'
 import Transaction from './transaction'
 import TxPool from './txPool'
 import SyncManager from './sync-manager'
+import EventWatcher from './event-watcher'
 import FixedMerkleTree from '../lib/fixed-merkle-tree'
 
 import RootChain from '../../build/contracts/RootChain.json'
@@ -43,28 +43,21 @@ class Chain {
       this.options.rootChainContract
     )
 
-    // get dagger contract from web3 contract
-    this.daggerObject = new EthDagger(this.options.daggerEndpoint)
-    this.parentDaggerContract = this.daggerObject.contract(this.parentContract)
-
     //
     // Watchers
     //
+    this.eventWatcher = new EventWatcher(
+      this.web3,
+      this.parentContract,
+      this.detailsDb,
+      this.options
+    )
 
     // watch root chain's block (and submit block)
     if (this.options.authorizedNode) {
       this._rootBlock = this._rootBlock.bind(this)
-      this.daggerObject.on('latest:block.number', this._rootBlock)
+      this.eventWatcher.onBlock(this._rootBlock)
     }
-
-    // block watcher
-    this.blockWatcher = this.parentDaggerContract.events.ChildBlockCreated()
-
-    // deposit block watcher
-    this.depositBlockWatcher = this.parentDaggerContract.events.DepositBlockCreated()
-
-    // exit event watcher
-    this.exitEventWatcher = this.parentDaggerContract.events.StartExit()
   }
 
   async start() {
@@ -72,7 +65,7 @@ class Chain {
     await this.syncManager.start()
 
     // start listening block
-    this.blockWatcher.watch((data, removed) => {
+    this.eventWatcher.on('ChildBlockCreated', data => {
       const {blockNumber, root} = data.returnValues
       console.log(`New block created, number: ${blockNumber}, root: ${root}`)
 
@@ -81,7 +74,7 @@ class Chain {
     })
 
     // start listening deposit block
-    this.depositBlockWatcher.watch((data, removed) => {
+    this.eventWatcher.on('DepositBlockCreated', data => {
       const {blockNumber, root, txBytes} = data.returnValues
       this.addDepositBlock(
         [
@@ -93,7 +86,7 @@ class Chain {
     })
 
     // start listening exits and mark them spent
-    this.exitEventWatcher.watch(data => {
+    this.eventWatcher.on('StartExit', data => {
       const {owner, blockNumber, txIndex, outputIndex} = data.returnValues
 
       // mark utxo spent after 2 sec
@@ -104,20 +97,14 @@ class Chain {
         )
       }, 2000)
     })
+
+    // start watcher
+    this.eventWatcher.start()
   }
 
   async stop() {
     // stop watching root block number
-    this.daggerObject.off('latest:block.number', this._rootBlock)
-
-    // stop watching block
-    this.blockWatcher.stopWatching()
-
-    // stop watching deposit block
-    this.depositBlockWatcher.stopWatching()
-
-    // stop watching exit event
-    this.exitEventWatcher.stopWatching()
+    this.eventWatcher.stop()
 
     // stop sync manager
     await this.syncManager.stop()

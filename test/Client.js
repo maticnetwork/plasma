@@ -140,8 +140,8 @@ contract('Root chain - client', async function(accounts) {
     it('mine more blocks', async function() {
       await mineToBlockHeight(web3.eth.blockNumber + 7)
 
-      // wait for 5 sec (give time to sync chain. TODO fix it)
-      await waitFor(5000)
+      // wait for 10 sec (give time to sync chain. TODO fix it)
+      await waitFor(10000)
     })
 
     it('withdraw', async function() {

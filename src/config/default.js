@@ -21,7 +21,8 @@ export default {
     deposit: Buffer.from('deposit'),
     tx: Buffer.from('tx'),
     txpool: Buffer.from('txpool'),
-    latestHead: Buffer.from('latestHead')
+    latestHead: Buffer.from('latestHead'),
+    latestRootBlock: Buffer.from('latestRootBlock')
   },
   chain: {
     db: process.env.CHAIN_DB || './db',
