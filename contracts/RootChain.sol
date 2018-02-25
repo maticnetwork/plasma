@@ -180,10 +180,6 @@ contract RootChain {
     StartExit(txList[6 + 2 * txPos[2]].toAddress(), txPos[0], txPos[1], txPos[2]);
   }
 
-    function incrementWeekOldBlock() public {
-    weekOldBlock = weekOldBlock.add(1);
-  }
-
   function challengeExit(
     uint256 exitId,
     uint256[3] txPos,
