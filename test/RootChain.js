@@ -11,7 +11,7 @@ import Transaction from '../src/chain/transaction'
 import FixedMerkleTree from '../src/lib/fixed-merkle-tree'
 
 // require root chain
-let RootChain = artifacts.require('./RootChain.sol')
+let RootChain = artifacts.require('./test/mocks/RootChainMock.sol')
 
 const BN = utils.BN
 const rlp = utils.rlp
@@ -146,7 +146,7 @@ contract('Root chain', function(accounts) {
     let depositTx
 
     // before task
-    before(async function() {
+    beforeEach(async function() {
       rootChain = await RootChain.new({from: accounts[0]})
       owner = wallets[0].getAddressString() // same as accounts[0]
     })
@@ -232,6 +232,92 @@ contract('Root chain', function(accounts) {
       assert.equal(user, owner)
       assert.equal(amount.toString(), value)
       assert.deepEqual(pos, posResult.map(p => p.toNumber()))
+    });
+
+    // There is a spectial condition in the MVP spec:
+    // "However, if when calling exit, the block that the UTXO was created in is more than 7 days old, then the blknum of the oldest Plasma block that is less than 7 days old is used instead."
+    // This condition is needed so that very old UTXOs don't overwite the tip of teh priority queue.
+    // If people would submit exits from older and older utxos, then no-one could ever exit, because waiting would start from 0 again and again at the tip of the queue.
+    // Yet, this condition also means that old UTXOs (older than 7 days) might receive the same priority, if they exit short after each other and hold the same position in block.
+    // This test makes sure that exitId is used instead of priority to store the records, hence avoiding collisions (which existed in previous implementations due to use of priority for hash map key).
+    it('should allow utxos with same priority to exit without collision', async function() {
+      const value = new BN(web3.toWei(0.1, 'ether'))
+
+      // alice deposits, spends. blocks get mined
+      let alice = wallets[0].getAddressString();
+      let a_depositTx = getDepositTx(alice, value)
+      await rootChain.deposit(utils.bufferToHex(a_depositTx.serializeTx()), { from: alice, value: value });
+      let a_transferTx = new Transaction([utils.toBuffer(1), new Buffer([]), new Buffer([]), new Buffer([]), new Buffer([]), new Buffer([]),
+        utils.toBuffer(alice), value.toArrayLike(Buffer, 'be', 32), utils.zeros(20), new Buffer([]), new Buffer([]) ]);
+      const a_transferTxBytes = utils.bufferToHex(a_transferTx.serializeTx())
+      a_transferTx.sign1(wallets[0].getPrivateKey())
+      const a_merkleHash = a_transferTx.merkleHash()
+      const a_tree = new FixedMerkleTree(16, [a_merkleHash])
+      const a_proof = utils.bufferToHex(
+        Buffer.concat(a_tree.getPlasmaProof(a_merkleHash))
+      )
+      await mineToBlockHeight(web3.eth.blockNumber + 7)
+      await rootChain.submitBlock(utils.bufferToHex(a_tree.getRoot()))
+      const a_blockPos = (await rootChain.currentChildBlock()).toNumber() - 1
+      let [childChainRoot, t] = await rootChain.getChildChain(a_blockPos)
+      childChainRoot = utils.toBuffer(childChainRoot)
+      const a_sigs = utils.bufferToHex(
+        Buffer.concat([
+          a_transferTx.sig1,
+          a_transferTx.sig2,
+          a_transferTx.confirmSig(childChainRoot, wallets[0].getPrivateKey())
+        ])
+      )
+
+      // bob deposits, spends. blocks get mined
+      let bob = wallets[1].getAddressString();
+      let b_depositTx = getDepositTx(bob, value)
+      await rootChain.deposit(utils.bufferToHex(b_depositTx.serializeTx()), { from: bob, value: value });
+      let b_transferTx = new Transaction([utils.toBuffer(3), new Buffer([]), new Buffer([]), new Buffer([]), new Buffer([]), new Buffer([]),
+        utils.toBuffer(bob), value.toArrayLike(Buffer, 'be', 32), utils.zeros(20), new Buffer([]), new Buffer([]) ]);
+      const b_transferTxBytes = utils.bufferToHex(b_transferTx.serializeTx())
+      b_transferTx.sign1(wallets[1].getPrivateKey()) // sign1
+      const b_merkleHash = b_transferTx.merkleHash()
+      const b_tree = new FixedMerkleTree(16, [b_merkleHash])
+      const b_proof = utils.bufferToHex(
+        Buffer.concat(b_tree.getPlasmaProof(b_merkleHash))
+      )
+      await mineToBlockHeight(web3.eth.blockNumber + 7)
+      await rootChain.submitBlock(utils.bufferToHex(b_tree.getRoot()))
+      const b_blockPos = (await rootChain.currentChildBlock()).toNumber() - 1
+      let [b_childChainRoot, b_t] = await rootChain.getChildChain(b_blockPos)
+      b_childChainRoot = utils.toBuffer(b_childChainRoot)
+      const b_sigs = utils.bufferToHex(
+        Buffer.concat([
+          b_transferTx.sig1,
+          b_transferTx.sig2,
+          b_transferTx.confirmSig(b_childChainRoot, wallets[1].getPrivateKey())
+        ])
+      )
+
+      // time passes and blocks move ahead
+      // simulated by increase of week old blocks
+      // to triger line `priority = priority.mul(Math.max(txPos[0], weekOldBlock));` in RootChain.sol
+      await rootChain.incrementWeekOldBlock();
+      await rootChain.incrementWeekOldBlock();
+      await rootChain.incrementWeekOldBlock();
+      await rootChain.incrementWeekOldBlock();
+
+      // alice starts exit
+      await rootChain.startExit([2, 0, 0], a_transferTxBytes, a_proof, a_sigs, { from: alice })
+      const a_exitId = a_blockPos * 1000000000 + 10000 * 0 + 0
+      let [user1] = await rootChain.getExit(a_exitId)
+      assert.equal(alice, user1);
+
+      // bob starts exit
+      await rootChain.startExit([4, 0, 0], b_transferTxBytes, b_proof, b_sigs, { from: bob })
+      const b_exitId = b_blockPos * 1000000000 + 10000 * 0 + 0
+      const [user2] = await rootChain.getExit(b_exitId)
+      assert.equal(bob, user2);
+
+      // make sure alice's slot is not overwritten
+      [user1] = await rootChain.getExit(a_exitId)
+      assert.equal(alice, user1);
     })
   })
 
