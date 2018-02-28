@@ -92,7 +92,7 @@ contract('Root chain - client', async function(accounts) {
       // console.log(receipt)
 
       // wait for 5 sec (give time to sync chain. TODO fix it)
-      await waitFor(5000)
+      await waitFor(10000)
     })
 
     it('transfer', async function() {
@@ -111,7 +111,9 @@ contract('Root chain - client', async function(accounts) {
         })
       chai.expect(response).to.be.json
       chai.expect(response).to.have.status(200)
-      chai.expect(response.body.result.length).to.be.above(0)
+      chai
+        .expect(response.body.result.length)
+        .to.be.above(0, 'No UTXOs to transfer')
 
       const {blockNumber, txIndex, outputIndex} = response.body.result[0]
       const transferTx = getTransferTx(
@@ -159,7 +161,9 @@ contract('Root chain - client', async function(accounts) {
         })
       chai.expect(response).to.be.json
       chai.expect(response).to.have.status(200)
-      chai.expect(response.body.result.length).to.be.above(0)
+      chai
+        .expect(response.body.result.length)
+        .to.be.above(0, 'No UTXOs to withdraw')
 
       const {blockNumber, txIndex, outputIndex, tx} = response.body.result[0]
       const exitTx = new Transaction(tx)

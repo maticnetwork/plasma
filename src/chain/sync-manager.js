@@ -143,7 +143,7 @@ export default class SyncManager {
 
   broadcastNewTx(txBytes, excluded) {
     const message = JSON.stringify({
-      type: 'TX:ADD',
+      type: 'ADD:TX',
       from: this.hostString,
       data: txBytes
     })
@@ -230,7 +230,7 @@ export default class SyncManager {
           )
         }
         break
-      case 'TX:ADD':
+      case 'ADD:TX':
         sender = this.peers[msg.from]
         if (sender) {
           this.chain.addTx(msg.data, [msg.from])

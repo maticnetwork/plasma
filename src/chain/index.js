@@ -7,7 +7,7 @@ import {Buffer} from 'safe-buffer'
 import config from '../config'
 import Block from './block'
 import Transaction from './transaction'
-import TxPool from './txPool'
+import TxPool from './txpool'
 import SyncManager from './sync-manager'
 import EventWatcher from './event-watcher'
 import FixedMerkleTree from '../lib/fixed-merkle-tree'
@@ -194,12 +194,12 @@ class Chain {
         }
 
         // check if already exited
-        const exitId = +await this.parentContract.methods
-          .exitIds(tx.exitIdByInputIndex(i))
+        const exitData = await this.parentContract.methods
+          .getExit(tx.exitIdByInputIndex(i))
           .call()
 
         // if exit id > 0, utxo has been exited
-        if (exitId > 0) {
+        if (+exitData[1] > 0) {
           // mark it spent
           await this._markUTXOSpent(keyForUTXO)
           return

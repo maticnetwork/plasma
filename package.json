@@ -5,15 +5,17 @@
   "description": "",
   "main": "truffle-config.js",
   "scripts": {
-    "testrpc": "ganache-cli --db=./testrpc-db --mnemonic='clock radar mass judge dismiss just intact mind resemble fringe diary casino' --gasLimit=13000000",
+    "testrpc":
+      "ganache-cli --db=./testrpc-db --mnemonic='clock radar mass judge dismiss just intact mind resemble fringe diary casino' --gasLimit=13000000",
     "test": "truffle test",
-    "test-ci": "scripts/test.sh test/RootChain.js",
+    "test-ci": "npm run clean && npm run compile && scripts/test.sh",
     "compile": "truffle compile",
     "deploy": "truffle deploy",
     "lint-contracts": "solhint -d contracts/**/*.sol",
     "lint-js": "eslint src/**/*.js test/**/*.js",
     "lint": "npm run lint-contracts && npm run lint-js",
-    "clean": "rm -rf dist && rm -rf db/* && rm -rf testrpc-db/* && rm -rf devdb/*",
+    "clean":
+      "rm -rf dist && rm -rf db/* && rm -rf testrpc-db/* && rm -rf devdb/*",
     "authorized-dev": "scripts/authorized-dev.sh",
     "dev": "scripts/dev.sh",
     "build": "npm run clean && mkdir -p dist && babel src -s -D -d dist",

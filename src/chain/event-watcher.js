@@ -56,7 +56,7 @@ export default class EventWatcher {
     // get number
     lastBlock = lastBlock.toNumber()
     let blockNumber = new BN(await this.web3.eth.getBlockNumber()).toNumber()
-    if (blockNumber > lastBlock && blockNumber - lastBlock < 20) {
+    if (blockNumber > lastBlock) {
       for (let i = lastBlock; i <= blockNumber; i++) {
         console.log('New root block found', i)
         await this._broadcastBlockEvents(new BN(i))
