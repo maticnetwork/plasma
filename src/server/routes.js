@@ -108,7 +108,15 @@ routes.post('/', (req, res) => {
     })
   }
 
-  const fn = methods[data.method]
+  if (!data.method.startsWith('plasma_')) {
+    return res.status(400).json({
+      code: 'input-error',
+      message: 'Invalid method name'
+    })
+  }
+
+  const method = data.method.split('plasma_')[1]
+  const fn = methods[method]
   if (!fn) {
     return res.status(404).json({
       message: 'No method found.',

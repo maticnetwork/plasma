@@ -105,7 +105,7 @@ contract('Root chain - client', async function(accounts) {
         .post('/')
         .send({
           jsonrpc: '2.0',
-          method: 'getUTXOs',
+          method: 'plasma_getUTXOs',
           params: [from.getAddressString()],
           id: 1
         })
@@ -130,7 +130,7 @@ contract('Root chain - client', async function(accounts) {
         .post('/')
         .send({
           jsonrpc: '2.0',
-          method: 'sendTx',
+          method: 'plasma_sendTx',
           params: [transferTxBytes],
           id: 1
         })
@@ -155,7 +155,7 @@ contract('Root chain - client', async function(accounts) {
         .post('/')
         .send({
           jsonrpc: '2.0',
-          method: 'getUTXOs',
+          method: 'plasma_getUTXOs',
           params: [withdrawer.getAddressString()],
           id: 1
         })
@@ -172,7 +172,7 @@ contract('Root chain - client', async function(accounts) {
         .post('/')
         .send({
           jsonrpc: '2.0',
-          method: 'getMerkleProof',
+          method: 'plasma_getMerkleProof',
           params: [parseInt(blockNumber), parseInt(txIndex)],
           id: 1
         })
