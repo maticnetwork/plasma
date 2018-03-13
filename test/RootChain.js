@@ -108,7 +108,7 @@ contract('Root chain', function(accounts) {
       )
 
       const receipt = await rootChain.startExit(
-        [1, 0, 0], // [blockNumber, txNumber, oIndex]
+        1000000000, // exitId = sum([blockNumber * 1000000000, txNumber * 10000, oIndex]) => [1, 0, 0]
         txBytes,
         proof,
         sigs,
@@ -121,12 +121,12 @@ contract('Root chain', function(accounts) {
       const [user, amount, pos] = await rootChain.getExit(priority)
       assert.equal(user, owner)
       assert.equal(amount.toString(), value)
-      assert.deepEqual([1, 0, 0], pos.map(p => p.toNumber()))
+      assert.deepEqual(priority, pos.toNumber())
 
       // trying again shoul fail
       await assertRevert(
         rootChain.startExit(
-          [1, 0, 0], // [blockNumber, txNumber, oIndex]
+          1000000000, // exitId = sum([blockNumber * 1000000000, txNumber * 10000, oIndex]) => [1, 0, 0]
           txBytes,
           proof,
           sigs,
@@ -192,19 +192,13 @@ contract('Root chain', function(accounts) {
         Buffer.concat(tree.getPlasmaProof(merkleHash))
       )
 
-      // submit new block - must throw before atleast 6 blocks
-      await assertRevert(
-        rootChain.submitBlock(utils.bufferToHex(tree.getRoot()))
-      )
-
-      // mine 7 more blocks
-      const oldChildBlockNumber = (await rootChain.currentChildBlock()).toNumber()
+      const childBlockNumber = (await rootChain.currentChildBlock()).toNumber()
       const lastBlock = web3.eth.blockNumber
-      await mineToBlockHeight(web3.eth.blockNumber + 7)
 
       // try again by submitting block
       let receipt = await rootChain.submitBlock(
-        utils.bufferToHex(tree.getRoot())
+        utils.bufferToHex(tree.getRoot()),
+        childBlockNumber
       )
 
       let currentChildBlock =
@@ -222,17 +216,22 @@ contract('Root chain', function(accounts) {
       )
 
       let priority = currentChildBlock * 1000000000 + 10000 * 0 + 0
-      const pos = [currentChildBlock, 0, 0]
       // Single input exit
-      receipt = await rootChain.startExit(pos, transferTxBytes, proof, sigs, {
-        from: owner
-      })
+      receipt = await rootChain.startExit(
+        priority,
+        transferTxBytes,
+        proof,
+        sigs,
+        {
+          from: owner
+        }
+      )
 
       const [user, amount, posResult] = await rootChain.getExit(priority)
       assert.equal(user, owner)
       assert.equal(amount.toString(), value)
-      assert.deepEqual(pos, posResult.map(p => p.toNumber()))
-    });
+      assert.deepEqual(priority, posResult.toNumber())
+    })
 
     // There is a spectial condition in the MVP spec:
     // "However, if when calling exit, the block that the UTXO was created in is more than 7 days old, then the blknum of the oldest Plasma block that is less than 7 days old is used instead."
@@ -244,11 +243,25 @@ contract('Root chain', function(accounts) {
       const value = new BN(web3.toWei(0.1, 'ether'))
 
       // alice deposits, spends. blocks get mined
-      let alice = wallets[0].getAddressString();
+      let alice = wallets[0].getAddressString()
       let a_depositTx = getDepositTx(alice, value)
-      await rootChain.deposit(utils.bufferToHex(a_depositTx.serializeTx()), { from: alice, value: value });
-      let a_transferTx = new Transaction([utils.toBuffer(1), new Buffer([]), new Buffer([]), new Buffer([]), new Buffer([]), new Buffer([]),
-        utils.toBuffer(alice), value.toArrayLike(Buffer, 'be', 32), utils.zeros(20), new Buffer([]), new Buffer([]) ]);
+      await rootChain.deposit(utils.bufferToHex(a_depositTx.serializeTx()), {
+        from: alice,
+        value: value
+      })
+      let a_transferTx = new Transaction([
+        utils.toBuffer(1),
+        new Buffer([]),
+        new Buffer([]),
+        new Buffer([]),
+        new Buffer([]),
+        new Buffer([]),
+        utils.toBuffer(alice),
+        value.toArrayLike(Buffer, 'be', 32),
+        utils.zeros(20),
+        new Buffer([]),
+        new Buffer([])
+      ])
       const a_transferTxBytes = utils.bufferToHex(a_transferTx.serializeTx())
       a_transferTx.sign1(wallets[0].getPrivateKey())
       const a_merkleHash = a_transferTx.merkleHash()
@@ -256,10 +269,10 @@ contract('Root chain', function(accounts) {
       const a_proof = utils.bufferToHex(
         Buffer.concat(a_tree.getPlasmaProof(a_merkleHash))
       )
-      await mineToBlockHeight(web3.eth.blockNumber + 7)
-      await rootChain.submitBlock(utils.bufferToHex(a_tree.getRoot()))
+      let blknum = (await rootChain.currentChildBlock()).toNumber()
+      await rootChain.submitBlock(utils.bufferToHex(a_tree.getRoot()), blknum)
       const a_blockPos = (await rootChain.currentChildBlock()).toNumber() - 1
-      let [childChainRoot, t] = await rootChain.getChildChain(a_blockPos)
+      let [childChainRoot] = await rootChain.getChildChain(a_blockPos)
       childChainRoot = utils.toBuffer(childChainRoot)
       const a_sigs = utils.bufferToHex(
         Buffer.concat([
@@ -270,11 +283,25 @@ contract('Root chain', function(accounts) {
       )
 
       // bob deposits, spends. blocks get mined
-      let bob = wallets[1].getAddressString();
+      let bob = wallets[1].getAddressString()
       let b_depositTx = getDepositTx(bob, value)
-      await rootChain.deposit(utils.bufferToHex(b_depositTx.serializeTx()), { from: bob, value: value });
-      let b_transferTx = new Transaction([utils.toBuffer(3), new Buffer([]), new Buffer([]), new Buffer([]), new Buffer([]), new Buffer([]),
-        utils.toBuffer(bob), value.toArrayLike(Buffer, 'be', 32), utils.zeros(20), new Buffer([]), new Buffer([]) ]);
+      await rootChain.deposit(utils.bufferToHex(b_depositTx.serializeTx()), {
+        from: bob,
+        value: value
+      })
+      let b_transferTx = new Transaction([
+        utils.toBuffer(3),
+        new Buffer([]),
+        new Buffer([]),
+        new Buffer([]),
+        new Buffer([]),
+        new Buffer([]),
+        utils.toBuffer(bob),
+        value.toArrayLike(Buffer, 'be', 32),
+        utils.zeros(20),
+        new Buffer([]),
+        new Buffer([])
+      ])
       const b_transferTxBytes = utils.bufferToHex(b_transferTx.serializeTx())
       b_transferTx.sign1(wallets[1].getPrivateKey()) // sign1
       const b_merkleHash = b_transferTx.merkleHash()
@@ -282,8 +309,9 @@ contract('Root chain', function(accounts) {
       const b_proof = utils.bufferToHex(
         Buffer.concat(b_tree.getPlasmaProof(b_merkleHash))
       )
-      await mineToBlockHeight(web3.eth.blockNumber + 7)
-      await rootChain.submitBlock(utils.bufferToHex(b_tree.getRoot()))
+
+      blknum = (await rootChain.currentChildBlock()).toNumber()
+      await rootChain.submitBlock(utils.bufferToHex(b_tree.getRoot()), blknum)
       const b_blockPos = (await rootChain.currentChildBlock()).toNumber() - 1
       let [b_childChainRoot, b_t] = await rootChain.getChildChain(b_blockPos)
       b_childChainRoot = utils.toBuffer(b_childChainRoot)
@@ -298,26 +326,42 @@ contract('Root chain', function(accounts) {
       // time passes and blocks move ahead
       // simulated by increase of week old blocks
       // to triger line `priority = priority.mul(Math.max(txPos[0], weekOldBlock));` in RootChain.sol
-      await rootChain.incrementWeekOldBlock();
-      await rootChain.incrementWeekOldBlock();
-      await rootChain.incrementWeekOldBlock();
-      await rootChain.incrementWeekOldBlock();
+      await rootChain.incrementWeekOldBlock()
+      await rootChain.incrementWeekOldBlock()
+      await rootChain.incrementWeekOldBlock()
+      await rootChain.incrementWeekOldBlock()
 
       // alice starts exit
-      await rootChain.startExit([2, 0, 0], a_transferTxBytes, a_proof, a_sigs, { from: alice })
+      await rootChain.startExit(
+        2000000000,
+        a_transferTxBytes,
+        a_proof,
+        a_sigs,
+        {
+          from: alice
+        }
+      )
       const a_exitId = a_blockPos * 1000000000 + 10000 * 0 + 0
       let [user1] = await rootChain.getExit(a_exitId)
-      assert.equal(alice, user1);
+      assert.equal(alice, user1)
 
       // bob starts exit
-      await rootChain.startExit([4, 0, 0], b_transferTxBytes, b_proof, b_sigs, { from: bob })
+      await rootChain.startExit(
+        4000000000,
+        b_transferTxBytes,
+        b_proof,
+        b_sigs,
+        {
+          from: bob
+        }
+      )
       const b_exitId = b_blockPos * 1000000000 + 10000 * 0 + 0
       const [user2] = await rootChain.getExit(b_exitId)
-      assert.equal(bob, user2);
+      assert.equal(bob, user2)
 
       // make sure alice's slot is not overwritten
-      [user1] = await rootChain.getExit(a_exitId)
-      assert.equal(alice, user1);
+      ;[user1] = await rootChain.getExit(a_exitId)
+      assert.equal(alice, user1)
     })
   })
 
@@ -383,14 +427,11 @@ contract('Root chain', function(accounts) {
         Buffer.concat(tree.getPlasmaProof(merkleHash))
       )
 
-      // mine 7 more blocks
-      let oldChildBlockNumber = (await rootChain.currentChildBlock()).toNumber()
-      let lastBlock = web3.eth.blockNumber
-      await mineToBlockHeight(web3.eth.blockNumber + 7)
-
       // submit block
+      let blknum = (await rootChain.currentChildBlock()).toNumber()
       let receipt = await rootChain.submitBlock(
-        utils.bufferToHex(tree.getRoot())
+        utils.bufferToHex(tree.getRoot()),
+        blknum
       )
 
       let currentChildBlock =
@@ -409,16 +450,21 @@ contract('Root chain', function(accounts) {
       )
 
       let priority = currentChildBlock * 1000000000 + 10000 * 0 + 0
-      const pos = [currentChildBlock, 0, 0]
       // Single input exit
-      receipt = await rootChain.startExit(pos, transferTxBytes, proof, sigs, {
-        from: owner
-      })
+      receipt = await rootChain.startExit(
+        priority,
+        transferTxBytes,
+        proof,
+        sigs,
+        {
+          from: owner
+        }
+      )
 
       const [user, amount, posResult] = await rootChain.getExit(priority)
       assert.equal(user, owner)
       assert.equal(amount.toString(), value)
-      assert.deepEqual(pos, posResult.map(p => p.toNumber()))
+      assert.deepEqual(priority, posResult.toNumber())
     })
   })
 
@@ -473,7 +519,7 @@ contract('Root chain', function(accounts) {
       )
 
       let receipt = await rootChain.startExit(
-        [currentChildBlock, 0, 0],
+        currentChildBlock * 1000000000 + 10000 * 0 + 0,
         depositTxBytes,
         proof,
         sigs
@@ -507,11 +553,12 @@ contract('Root chain', function(accounts) {
       tree = new FixedMerkleTree(16, [merkleHash])
       proof = utils.bufferToHex(Buffer.concat(tree.getPlasmaProof(merkleHash)))
 
-      // mine 7 more blocks
-      const lastBlock = web3.eth.blockNumber
-      await mineToBlockHeight(web3.eth.blockNumber + 7)
       // submit block
-      receipt = await rootChain.submitBlock(utils.bufferToHex(tree.getRoot()))
+      let blknum = (await rootChain.currentChildBlock()).toNumber()
+      receipt = await rootChain.submitBlock(
+        utils.bufferToHex(tree.getRoot()),
+        blknum
+      )
 
       //
       // challenge exit
@@ -531,8 +578,8 @@ contract('Root chain', function(accounts) {
 
       const exitId = (currentChildBlock - 1) * 1000000000 + 10000 * 0 + 0
       receipt = await rootChain.challengeExit(
+        currentChildBlock * 1000000000 + 10000 * 0 + 0,
         exitId,
-        [currentChildBlock, 0, 0],
         transferTxBytes,
         proof,
         sigs,

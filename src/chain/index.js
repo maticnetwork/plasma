@@ -156,11 +156,14 @@ class Chain {
 
     // submit block to root chain
     const root = utils.bufferToHex(newBlock.header.root)
+    const currentChildBlock = await this.parentContract.methods.currentChildBlock()
     try {
       await this._sendTransaction({
         gasLimit: 100000,
         to: this.parentContract.options.address,
-        data: this.parentContract.methods.submitBlock(root).encodeABI()
+        data: this.parentContract.methods
+          .submitBlock(root, parseInt(currentChildBlock.toString(), 10))
+          .encodeABI()
       })
     } catch (e) {
       console.log(`Error while submitting the new root: ${root}`, e)

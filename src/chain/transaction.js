@@ -113,7 +113,7 @@ export default class Transaction {
 
   confirmSig(root, privateKey) {
     const vrs = utils.ecsign(
-      utils.sha3(Buffer.concat([this.hash(false), this.sig1, this.sig2, root])),
+      utils.sha3(Buffer.concat([this.hash(false), root])),
       privateKey
     )
     return utils.toBuffer(utils.toRpcSig(vrs.v, vrs.r, vrs.s))

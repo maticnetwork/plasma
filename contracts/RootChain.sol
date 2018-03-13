@@ -39,14 +39,13 @@ contract RootChain {
 
   address public authority;
   uint256 public currentChildBlock;
-  uint256 public lastParentBlock;
   uint256 public recentBlock;
   uint256 public weekOldBlock;
 
   struct Exit {
     address owner;
     uint256 amount;
-    uint256[3] utxoPos;
+    uint256 utxoPos;
   }
 
   struct ChildBlock {
@@ -77,31 +76,28 @@ contract RootChain {
   {
     authority = msg.sender;
     currentChildBlock = 1;
-    lastParentBlock = block.number;
     exitsQueue = new PriorityQueue();
   }
 
-  function submitBlock(bytes32 root)
+  function submitBlock(bytes32 root, uint256 blknum)
     public
     isAuthority
     incrementOldBlocks
   {
-    require(block.number >= lastParentBlock.add(6));
+    require(blknum == currentChildBlock);
     childChain[currentChildBlock] = ChildBlock({
       root: root,
       createdAt: block.timestamp
     });
     ChildBlockCreated(currentChildBlock, root);
-
     currentChildBlock = currentChildBlock.add(1);
-    lastParentBlock = block.number;
   }
 
   function deposit(bytes txBytes)
     public
     payable
   {
-    var txList = txBytes.toRLPItem().toList();
+    var txList = txBytes.toRLPItem().toList(11);
     require(txList.length == 11);
     for (uint256 i; i < 6; i++) {
       require(txList[i].toUint() == 0);
@@ -136,13 +132,18 @@ contract RootChain {
   function getExit(uint256 exitId)
     public
     view
-    returns (address, uint256, uint256[3])
+    returns (address, uint256, uint256)
   {
     return (exits[exitId].owner, exits[exitId].amount, exits[exitId].utxoPos);
   }
 
+  // @dev Starts to exit a specified utxo
+  // @param utxoPos The position of the exiting utxo in the format of blknum * 1000000000 + index * 10000 + oindex
+  // @param txBytes The transaction being exited in RLP bytes format
+  // @param proof Proof of the exiting transactions inclusion for the block specified by utxoPos
+  // @param sigs Both transaction signatures and confirmations signatures used to verify that the exiting transaction has been confirmed
   function startExit(
-    uint256[3] txPos,
+    uint256 utxoPos,
     bytes txBytes,
     bytes proof,
     bytes sigs
@@ -150,39 +151,56 @@ contract RootChain {
     public
     incrementOldBlocks
   {
-    var txList = txBytes.toRLPItem().toList();
+    var txList = txBytes.toRLPItem().toList(11);
+    uint256 blknum = utxoPos / 1000000000;
+    uint256 txindex = (utxoPos % 1000000000) / 10000;
+    uint256 oindex = utxoPos - blknum * 1000000000 - txindex * 10000;
+
     require(txList.length == 11);
-    require(msg.sender == txList[6 + 2 * txPos[2]].toAddress());
+    require(msg.sender == txList[6 + 2 * oindex].toAddress());
     bytes32 txHash = keccak256(txBytes);
     bytes32 merkleHash = keccak256(txHash, ByteUtils.slice(sigs, 0, 130));
-    uint256 inputCount = txList[3].toUint() * 1000000 + txList[0].toUint();
+    uint256 inputCount = txList[3].toUint() * 1000000000 + txList[0].toUint();
     require(
       Validate.checkSigs(
         txHash,
-        childChain[txPos[0]].root,
+        childChain[blknum].root,
         inputCount,
         sigs
       )
     );
-    require(merkleHash.checkMembership(txPos[1], childChain[txPos[0]].root, proof));
-    uint256 priority = 1000000000 + txPos[1] * 10000 + txPos[2];
-    uint256 exitId = txPos[0].mul(priority);
-    priority = priority.mul(Math.max(txPos[0], weekOldBlock));
-    require(exits[exitId].amount == 0);
-    exitsQueue.insert((priority << 128) | exitId);
-    exits[exitId] = Exit({
-      owner: txList[6 + 2 * txPos[2]].toAddress(),
-      amount: txList[7 + 2 * txPos[2]].toUint(),
-      utxoPos: txPos
+    require(merkleHash.checkMembership(txindex, childChain[blknum].root, proof));
+
+    // Priority is a given utxos position in the exit priority queue
+    uint256 priority;
+    if (blknum < weekOldBlock) {
+      priority = (utxoPos / blknum).mul(weekOldBlock);
+    } else {
+      priority = utxoPos;
+    }
+
+    require(exits[utxoPos].amount == 0);
+    exitsQueue.insert((priority << 128) | utxoPos);
+    exits[utxoPos] = Exit({
+      owner: txList[6 + 2 * oindex].toAddress(),
+      amount: txList[7 + 2 * oindex].toUint(),
+      utxoPos: utxoPos
     });
 
     // broadcast start exit event
-    StartExit(txList[6 + 2 * txPos[2]].toAddress(), txPos[0], txPos[1], txPos[2]);
+    StartExit(txList[6 + 2 * oindex].toAddress(), blknum, txindex, oindex);
   }
 
+  // @dev Allows anyone to challenge an exiting transaction by submitting proof of a double spend on the child chain
+  // @param cUtxoPos The position of the challenging utxo
+  // @param eUtxoPos The position of the exiting utxo
+  // @param txBytes The challenging transaction in bytes RLP form
+  // @param proof Proof of inclusion for the transaction used to challenge
+  // @param sigs Signatures for the transaction used to challenge
+  // @param confirmationSig The confirmation signature for the transaction used to challenge
   function challengeExit(
-    uint256 exitId,
-    uint256[3] txPos,
+    uint256 cUtxoPos,
+    uint256 eUtxoPos,
     bytes txBytes,
     bytes proof,
     bytes sigs,
@@ -190,19 +208,17 @@ contract RootChain {
   )
     public
   {
-    var txList = txBytes.toRLPItem().toList();
-    require(txList.length == 11);
-    uint256[3] memory exitsUtxoPos = exits[exitId].utxoPos;
-    require(exitsUtxoPos[0] == txList[0 + 2 * exitsUtxoPos[2]].toUint());
-    require(exitsUtxoPos[1] == txList[1 + 2 * exitsUtxoPos[2]].toUint());
-    require(exitsUtxoPos[2] == txList[2 + 2 * exitsUtxoPos[2]].toUint());
+    uint256 txindex = (cUtxoPos % 1000000000) / 10000;
+    bytes32 root = childChain[cUtxoPos / 1000000000].root;
+
     var txHash = keccak256(txBytes);
-    var confirmationHash = keccak256(txHash, sigs, childChain[txPos[0]].root);
+    var confirmationHash = keccak256(txHash, root);
     var merkleHash = keccak256(txHash, sigs);
-    address owner = exits[exitId].owner;
+    address owner = exits[eUtxoPos].owner;
+
     require(owner == ECRecovery.recover(confirmationHash, confirmationSig));
-    require(merkleHash.checkMembership(txPos[1], childChain[txPos[0]].root, proof));
-    delete exits[exitId];
+    require(merkleHash.checkMembership(txindex, root, proof));
+    delete exits[eUtxoPos];
   }
 
   function finalizeExits()
@@ -212,8 +228,9 @@ contract RootChain {
   {
     uint256 twoWeekOldTimestamp = block.timestamp.sub(2 weeks);
     Exit memory currentExit = exits[uint128(exitsQueue.getMin())];
-    while (childChain[currentExit.utxoPos[0]].createdAt < twoWeekOldTimestamp && exitsQueue.currentSize() > 0) {
-      uint256 exitId = currentExit.utxoPos[0] * 1000000000 + currentExit.utxoPos[1] * 10000 + currentExit.utxoPos[2];
+    uint256 blknum = currentExit.utxoPos.div(1000000000);
+
+    while (childChain[blknum].createdAt < twoWeekOldTimestamp && exitsQueue.currentSize() > 0) {
       currentExit.owner.transfer(currentExit.amount);
       uint256 priority = exitsQueue.delMin();
       delete exits[priority];
