@@ -156,7 +156,9 @@ class Chain {
 
     // submit block to root chain
     const root = utils.bufferToHex(newBlock.header.root)
-    const currentChildBlock = await this.parentContract.methods.currentChildBlock()
+    const currentChildBlock = await this.parentContract.methods
+      .currentChildBlock()
+      .call()
     try {
       await this._sendTransaction({
         gasLimit: 100000,

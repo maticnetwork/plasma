@@ -197,7 +197,9 @@ contract('Root chain - client', async function(accounts) {
 
       // start exit
       const receipt = await rootChainContract.startExit(
-        [blockNumber, txIndex, outputIndex], // pos array
+        parseInt(blockNumber) * 1000000000 +
+          parseInt(txIndex) * 10000 +
+          parseInt(outputIndex),
         utils.bufferToHex(exitTx.serializeTx(false)), // serialize without signature
         merkleProof,
         sigs,
