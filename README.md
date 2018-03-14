@@ -44,6 +44,18 @@ $ npm run build
 $ npm start
 ```
 
+### CLI
+
+```
+$ npm run testrpc # or use actual ethereum node (check configurations)
+$ npm run authorized-node # or simple dev node => npm run dev
+
+
+# start cli (`-p` option provides a way to accept sender's private key)
+$ ./src/cli/index.js -p '9b28f36fbd67381120752d6172ecdcf10e06ab2d9a1367aac00cdcd6ac7855d3'
+plasma > .help
+```
+
 #### Configurations
 
 You can override default configurations by creating `config.env` file in root directory and adding following variables:
