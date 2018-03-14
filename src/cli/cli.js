@@ -40,7 +40,7 @@ axiosInstance.interceptors.request.use(
 // Command line parsing
 //
 
-const argv = require('yargs') // eslint-disable-line
+const argv = yargs // eslint-disable-line
   .option('private-key', {
     alias: 'p',
     describe: 'private key to sign transactions',
@@ -108,10 +108,13 @@ async function getUTXOs() {
   console.log('Total utxo available:', data.result.length)
   if (data.result.length > 0) {
     data.result.slice(0, 5).forEach(u => {
+      const outputIndex = parseInt(u.outputIndex)
+      const amount = parseInt(outputIndex === 0 ? u.tx.amount1 : u.tx.amount2)
+      const pos = [parseInt(u.blockNumber), parseInt(u.txIndex), outputIndex]
       console.log(
-        parseInt(u.blockNumber),
-        parseInt(u.txIndex),
-        parseInt(u.outputIndex)
+        `Position: ${pos.join(' ')}, Amount: ${web3.utils.fromWei(
+          amount.toString()
+        )}`
       )
     })
   }
@@ -122,17 +125,62 @@ async function getTx(...args) {
   if (args.length === 3) {
     method = 'plasma_getTxByPos'
     args.unshift(sender)
-  } else {
+  } else if (args.length === 1) {
     method = 'plasma_getTxByHash'
+  } else {
+    throw new Error(
+      'Invalid arguments. For hash, pass transaction hash or pass positions'
+    )
   }
 
-  console.log(args)
   const {data} = await axiosInstance.post('/', {
     method: method,
     params: args
   })
 
-  console.log(data)
+  console.log(data.result)
+}
+
+async function transfer(...args) {
+  if (args.length !== 11) {
+    throw new Error('Invalid arguments.')
+  }
+
+  let transferTx = new Transaction([
+    utils.toBuffer(args[0]), // block number for first input
+    new Buffer(args[1]), // tx number for 1st input
+    new Buffer(args[2]), // previous output number 1 (as 1st input)
+    new Buffer(args[3]), // block number 2
+    new Buffer(args[4]), // tx number 2
+    new Buffer(args[5]), // previous output number 2 (as 2nd input)
+
+    utils.isValidAddress(args[6]) ? utils.toBuffer(args[6]) : utils.zeros(20), // output address 1
+    new BN(web3.utils.toWei(parseInt(args[7]).toString())).toArrayLike(
+      Buffer,
+      'be',
+      32
+    ), // value for output 2
+
+    utils.isValidAddress(args[8]) ? utils.toBuffer(args[8]) : utils.zeros(20), // output address 2
+    new BN(web3.utils.toWei(parseInt(args[9]).toString())).toArrayLike(
+      Buffer,
+      'be',
+      32
+    ), // value for output 2
+
+    new Buffer([10]) // fee
+  ])
+
+  // generate proof
+  transferTx.sign1(privateKey) // sign1
+  const transferTxBytes = utils.bufferToHex(transferTx.serializeTx(true))
+
+  const {data} = await axiosInstance.post('/', {
+    method: 'plasma_sendTx',
+    params: [transferTxBytes]
+  })
+
+  console.log('Transaction ID:', data.result)
 }
 
 //
@@ -190,7 +238,7 @@ function initializeContext(context) {
 
 // command list
 replServer.defineCommand('deposit', {
-  help: 'Deposit ethers',
+  help: 'Deposit ethers. Argument: amount. Example: .deposit 3',
   action: wrapAction(deposit)
 })
 
@@ -200,8 +248,15 @@ replServer.defineCommand('utxo', {
 })
 
 replServer.defineCommand('tx', {
-  help: 'Get transaction by hash or positions',
+  help:
+    'Get transaction by hash or positions. Arguments: txHash or blockNumber txIndex outputIndex. Example: .tx 2 0 0 OR .tx 0xab35...3df45',
   action: wrapAction(getTx)
+})
+
+replServer.defineCommand('transfer', {
+  help:
+    'Transfer plasma coins. Arguments: blk1 tIndex1 oIndex1 blk2 tIndex2 oIndex2 owner1 amount1 owner2 amount2 fee. Example: .transfer 1 0 0 0 0 0 0x9fb29aac15b9a4b7f17c3385939b007540f4d791 1 0x 0 0',
+  action: wrapAction(transfer)
 })
 
 // refresh context on reset
