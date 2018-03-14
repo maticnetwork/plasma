@@ -97,6 +97,7 @@ async function deposit(amount) {
   console.log('Transaction ID:', receipt.transactionHash)
   console.log('Block number:', receipt.blockNumber)
   console.log('Transaction index: ', receipt.transactionIndex)
+  console.log('Note: This will take a while to appear in list of UTXOs.')
 }
 
 async function getUTXOs() {
@@ -104,7 +105,34 @@ async function getUTXOs() {
     method: 'plasma_getUTXOs',
     params: [sender]
   })
-  console.log(data.result)
+  console.log('Total utxo available:', data.result.length)
+  if (data.result.length > 0) {
+    data.result.slice(0, 5).forEach(u => {
+      console.log(
+        parseInt(u.blockNumber),
+        parseInt(u.txIndex),
+        parseInt(u.outputIndex)
+      )
+    })
+  }
+}
+
+async function getTx(...args) {
+  let method = null
+  if (args.length === 3) {
+    method = 'plasma_getTxByPos'
+    args.unshift(sender)
+  } else {
+    method = 'plasma_getTxByHash'
+  }
+
+  console.log(args)
+  const {data} = await axiosInstance.post('/', {
+    method: method,
+    params: args
+  })
+
+  console.log(data)
 }
 
 //
@@ -113,9 +141,10 @@ async function getUTXOs() {
 
 const replServer = repl.start({prompt: 'plasma > '})
 const wrapAction = fn => {
-  return function(...args) {
-    this.clearBufferedCommand()
+  return function(data) {
+    const args = data.replace(/ +/, ' ').split(' ')
     const result = fn(...args)
+    this.clearBufferedCommand()
     if (result instanceof Promise) {
       result
         .then(() => {
@@ -168,6 +197,11 @@ replServer.defineCommand('deposit', {
 replServer.defineCommand('utxo', {
   help: 'List UTXOs (shows upto 5)',
   action: wrapAction(getUTXOs)
+})
+
+replServer.defineCommand('tx', {
+  help: 'Get transaction by hash or positions',
+  action: wrapAction(getTx)
 })
 
 // refresh context on reset

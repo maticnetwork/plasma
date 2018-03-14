@@ -56,6 +56,20 @@ export async function getAllUTXOs(address) {
   })
 }
 
+export async function getTxByPos(address, blockNumber, txIndex, oIndex) {
+  if (!address || !utils.isValidAddress(address)) {
+    return null
+  }
+
+  try {
+    const key = Transaction.keyForUTXO(address, blockNumber, txIndex, oIndex)
+    const data = await chain.detailsDb.get(key)
+    return new Transaction(rlp.decode(data))
+  } catch (e) {
+    return null
+  }
+}
+
 export async function getTxByHash(txHash) {
   if (!txHash) {
     return null
